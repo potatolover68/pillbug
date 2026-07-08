@@ -1,0 +1,114 @@
+.pillbug-sidebar {
+  --panel-bg: #2a2d34;
+  --panel-text: #eee;
+  --panel-muted: rgba(238, 238, 238, 0.55);
+  --panel-border: rgba(0, 0, 0, 0.35);
+  --accent: #f5a623;
+  --row-h: 20px;
+  --pad: 4px;
+  --sidebar-width: 220px;
+  --sidebar-collapsed-width: 36px;
+
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  height: 100%;
+  box-sizing: border-box;
+  font-family: sans-serif;
+  font-size: 11px;
+  color: var(--panel-text);
+  background: var(--panel-bg);
+  border-left: 1px solid var(--panel-border);
+}
+
+.pillbug-sidebar-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pad);
+  flex: 1;
+  min-height: 0;
+  padding: var(--pad);
+  overflow: hidden;
+}
+
+.pillbug-sidebar .panel-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pillbug-sidebar .panel-label {
+  color: var(--panel-muted);
+  line-height: var(--row-h);
+}
+
+.pillbug-sidebar .panel-input,
+.pillbug-sidebar .panel-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 2px 4px;
+  font: inherit;
+  line-height: 1.35;
+  color: var(--panel-text);
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--panel-border);
+  border-radius: 2px;
+}
+
+.pillbug-sidebar .panel-textarea {
+  min-height: calc(var(--row-h) * 2);
+  resize: vertical;
+}
+
+.pillbug-sidebar .panel-input::placeholder,
+.pillbug-sidebar .panel-textarea::placeholder {
+  color: var(--panel-muted);
+}
+
+.pillbug-sidebar .panel-input:focus,
+.pillbug-sidebar .panel-textarea:focus {
+  outline: 1px solid var(--accent);
+  outline-offset: 0;
+}
+
+.pillbug-sidebar .panel-actions {
+  display: flex;
+  gap: 2px;
+}
+
+.pillbug-sidebar .panel-btn {
+  flex: 1;
+  min-width: 0;
+  height: var(--row-h);
+  padding: 0 4px;
+  border: none;
+  border-radius: 2px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.75);
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pillbug-sidebar .panel-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.pillbug-sidebar .panel-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.pillbug-sidebar .panel-status {
+  color: var(--panel-muted);
+  line-height: 1.35;
+}
+
+.pillbug-sidebar .panel-status.error {
+  color: #ff8a80;
+}
+
+.pillbug-sidebar .panel-muted {
+  color: var(--panel-muted);
+}
