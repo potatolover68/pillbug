@@ -1,19 +1,21 @@
 import BrowserSession from "m3api/browser.js";
+import { WIKI_ORIGIN_HEADER } from "./defaults";
 
-function actionApiUrl(wikiOrigin: string): string {
-  return `${wikiOrigin.replace(/\/$/, "")}/w/api.php`;
+/** Same-origin Action API URL (proxied by `npm start` / Vite to the wiki). */
+function localActionApiUrl(): string {
+  return `${window.location.origin}/w/api.php`;
 }
 
 /**
- * m3api browser session aimed at the configured wiki origin
- * (Toolforge / direct; no same-origin proxy header).
+ * m3api session for pillbug's same-origin wiki proxy:
+ * credentials + X-Pillbug-Wiki-Origin on every fetch.
  */
 export class PillbugSession extends BrowserSession {
   wikiOrigin: string;
 
   constructor(wikiOrigin: string, userAgent: string) {
     super(
-      actionApiUrl(wikiOrigin),
+      localActionApiUrl(),
       { formatversion: 2 },
       {
         userAgent,
@@ -24,16 +26,17 @@ export class PillbugSession extends BrowserSession {
     this.wikiOrigin = wikiOrigin;
   }
 
-  /** Keep apiUrl in sync when Config switches wiki origin. */
   setWikiOrigin(wikiOrigin: string): void {
     this.wikiOrigin = wikiOrigin;
-    this.apiUrl = actionApiUrl(wikiOrigin);
   }
 
   getFetchOptions(fetchOptions: RequestInit): RequestInit {
     const base = super.getFetchOptions(fetchOptions);
+    const headers = new Headers(base.headers);
+    headers.set(WIKI_ORIGIN_HEADER, this.wikiOrigin);
     return {
       ...base,
+      headers,
       credentials: "include",
     };
   }

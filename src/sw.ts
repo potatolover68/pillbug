@@ -27,6 +27,15 @@ self.addEventListener("install", (event) => {
 clientsClaim();
 
 self.addEventListener("fetch", (event) => {
+  const url = new URL(event.request.url);
+  // Never cache the wiki proxy — always hit the live server.
+  if (
+    url.origin === self.location.origin &&
+    (url.pathname === "/w/api.php" ||
+      url.pathname.startsWith("/w/rest.php"))
+  ) {
+    return;
+  }
   if (event.request.method !== "GET") return;
   event.respondWith(handleFetch(event.request));
 });
