@@ -456,9 +456,9 @@ onMounted(() => {
       </section>
 
       <section class="packs-col">
-        <div class="col-header">
+        <div class="queue-header">
           <span class="section-label">Nodepacks</span>
-          <span class="muted">{{ installedPacks.length }} installed</span>
+          <span class="muted">{{ installedPacks.length }} pack(s)</span>
         </div>
 
         <div class="pack-install">
