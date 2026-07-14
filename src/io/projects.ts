@@ -21,11 +21,11 @@ import {
 } from "../tabs/code/state";
 import { clearPrefetch } from "../wiki/prefetch";
 import { pageQueue, replaceQueue } from "../wiki/queue";
+import { DEFAULT_USER_AGENT } from "../meta";
 import {
   applyWikiOrigin,
   persistWikiConfig,
   prefetchMode,
-  userAgent,
   username,
   wikiOrigin,
 } from "../wiki/session";
@@ -34,7 +34,7 @@ function collectWiki(): ProjectWikiSnapshot {
   return {
     wikiOrigin: wikiOrigin.value,
     username: username.value,
-    userAgent: userAgent.value,
+    userAgent: DEFAULT_USER_AGENT,
     prefetchMode: prefetchMode.value,
   };
 }
@@ -42,7 +42,6 @@ function collectWiki(): ProjectWikiSnapshot {
 function applyWiki(snap: ProjectWikiSnapshot): void {
   applyWikiOrigin(snap.wikiOrigin);
   username.value = snap.username;
-  userAgent.value = snap.userAgent;
   prefetchMode.value = snap.prefetchMode === "B" ? "B" : "A";
 }
 

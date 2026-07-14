@@ -7,6 +7,7 @@ import {
   toggleSidebar,
   type AppTab,
 } from "./tabs";
+import AboutLinks from "./AboutLinks.vue";
 import ProjectPanel from "./ProjectPanel.vue";
 import "./sidebar.css";
 
@@ -44,6 +45,7 @@ defineProps<{
       <slot />
     </div>
 
+    <AboutLinks v-show="!collapsed" />
     <ProjectPanel v-show="!collapsed" />
   </aside>
 </template>

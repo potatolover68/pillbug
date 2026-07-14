@@ -6,16 +6,14 @@ import {
   type WikiPage,
   type WikiUserInfo,
 } from "./client";
+import { DEFAULT_USER_AGENT } from "../meta";
 import { DEFAULT_WIKI_ORIGIN } from "./defaults";
 import { listFromSource, namespaceOptions, type QueueSource } from "./lists";
-
-const DEFAULT_USER_AGENT = "pillbug/0.0.0 (wip; contact User:MSK)";
 
 export type PrefetchMode = "A" | "B";
 
 export const wikiOrigin = ref(DEFAULT_WIKI_ORIGIN);
 export const username = ref("");
-export const userAgent = ref(DEFAULT_USER_AGENT);
 /** Memory-only; never written to IndexedDB. Cleared after each login attempt. */
 export const password = ref("");
 
@@ -39,7 +37,7 @@ const sessionOrigin = ref<string | null>(null);
 /** Single always-on client; session state lives in the refs above. */
 const client = new WikiClient(() => ({
   origin: normalizedWikiOrigin(),
-  userAgent: userAgent.value.trim() || DEFAULT_USER_AGENT,
+  userAgent: DEFAULT_USER_AGENT,
 }));
 
 export const canLogin = computed(
@@ -217,7 +215,6 @@ export async function loadWikiConfig(): Promise<void> {
   if (!record) return;
   wikiOrigin.value = record.wikiOrigin || DEFAULT_WIKI_ORIGIN;
   username.value = record.username;
-  userAgent.value = record.userAgent || DEFAULT_USER_AGENT;
   prefetchMode.value = record.prefetchMode === "B" ? "B" : "A";
 }
 
@@ -237,7 +234,7 @@ export async function persistWikiConfig(): Promise<void> {
     id: "default",
     wikiOrigin: normalizedWikiOrigin(),
     username: username.value.trim(),
-    userAgent: userAgent.value.trim() || DEFAULT_USER_AGENT,
+    userAgent: DEFAULT_USER_AGENT,
     prefetchMode: prefetchMode.value,
   };
   wikiOrigin.value = record.wikiOrigin;

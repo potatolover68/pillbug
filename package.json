@@ -1,7 +1,7 @@
 {
   "name": "pillbug",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "license": "GPL-3.0-or-later",
   "scripts": {
@@ -14,6 +14,7 @@
     "@nodish/base": "^0.2.2",
     "@nodish/core": "^0.3.1",
     "@vueuse/core": "^14.3.0",
+    "diff-match-patch": "^1.0.5",
     "idb": "^8.0.3",
     "m3api": "^1.1.0",
     "m3api-botpassword": "^1.0.2",
@@ -23,6 +24,7 @@
     "vue-diff": "^1.2.4"
   },
   "devDependencies": {
+    "@types/diff-match-patch": "^1.0.32",
     "@types/node": "^24.13.2",
     "@vitejs/plugin-vue": "^6.0.7",
     "@vue/tsconfig": "^0.9.1",

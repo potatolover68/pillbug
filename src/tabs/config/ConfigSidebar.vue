@@ -9,7 +9,6 @@ import {
   loggedIn,
   logout,
   password,
-  userAgent,
   username,
   wikiOrigin,
 } from "../../wiki/session";
@@ -59,16 +58,6 @@ function onSetOrigin(): void {
           Set
         </button>
       </div>
-    </label>
-
-    <label class="panel-field">
-      <span class="panel-label">User agent</span>
-      <input
-        v-model="userAgent"
-        class="panel-input"
-        type="text"
-        autocomplete="off"
-      />
     </label>
 
     <label class="panel-field">
