@@ -22,6 +22,7 @@ import {
 import { clearPrefetch } from "../wiki/prefetch";
 import { pageQueue, replaceQueue } from "../wiki/queue";
 import {
+  applyWikiOrigin,
   persistWikiConfig,
   prefetchMode,
   userAgent,
@@ -39,7 +40,7 @@ function collectWiki(): ProjectWikiSnapshot {
 }
 
 function applyWiki(snap: ProjectWikiSnapshot): void {
-  wikiOrigin.value = snap.wikiOrigin;
+  applyWikiOrigin(snap.wikiOrigin);
   username.value = snap.username;
   userAgent.value = snap.userAgent;
   prefetchMode.value = snap.prefetchMode === "B" ? "B" : "A";

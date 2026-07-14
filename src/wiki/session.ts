@@ -1,4 +1,4 @@
-import { computed, ref, watch } from "vue";
+import { computed, ref } from "vue";
 import { openPillbugDB, type WikiConfigRecord } from "../db/open";
 import {
   WikiClient,
@@ -27,6 +27,12 @@ export const loginError = ref<string | null>(null);
 export const loginBusy = ref(false);
 export const loggedInAs = ref<string | null>(null);
 
+/**
+ * Bumped after each successful siteinfo load so UI (namespace list) re-reads
+ * WikiTitle static maps.
+ */
+export const namespaceEpoch = ref(0);
+
 /** Origin the current MediaWiki session cookies belong to (null if logged out). */
 const sessionOrigin = ref<string | null>(null);
 
@@ -51,6 +57,36 @@ function normalizedWikiOrigin(): string {
   } catch {
     return DEFAULT_WIKI_ORIGIN;
   }
+}
+
+function parseOrigin(raw: string): string {
+  return new URL(raw.trim() || DEFAULT_WIKI_ORIGIN).origin;
+}
+
+/**
+ * Apply a wiki origin from the Set button (not on every keystroke).
+ * Clears the session when switching away from the logged-in wiki.
+ */
+export function applyWikiOrigin(raw: string): void {
+  let next: string;
+  try {
+    next = parseOrigin(raw);
+  } catch {
+    loginError.value = "Invalid wiki origin URL";
+    return;
+  }
+
+  const prevSession = sessionOrigin.value;
+  wikiOrigin.value = next;
+
+  if (prevSession && prevSession !== next) {
+    clearSession();
+    loginError.value = "Wiki origin changed — log in again";
+  } else {
+    loginError.value = null;
+  }
+
+  void persistWikiConfig();
 }
 
 function isAlreadyLoggedInError(error: unknown): boolean {
@@ -90,6 +126,7 @@ function assertNamedAccount(
 
 async function attachSession(expectedBotUser?: string): Promise<void> {
   await client.getTokensAndSiteInfo();
+  namespaceEpoch.value += 1;
   const info = await client.userinfo();
   const name = assertNamedAccount(
     info,
@@ -109,18 +146,6 @@ function clearSession(): void {
   sessionOrigin.value = null;
   password.value = "";
 }
-
-/** Changing wiki origin invalidates cookies/tokens for the previous wiki. */
-watch(
-  () => normalizedWikiOrigin(),
-  (next) => {
-    if (sessionOrigin.value && sessionOrigin.value !== next) {
-      clearSession();
-      loginError.value = "Wiki origin changed — log in again";
-      void persistWikiConfig();
-    }
-  },
-);
 
 function requireLoggedIn(): void {
   if (!loggedIn.value) {
@@ -178,6 +203,7 @@ export async function generateQueueTitles(
 }
 
 export function listNamespaceOptions(): Array<{ id: number; label: string }> {
+  void namespaceEpoch.value;
   try {
     return namespaceOptions();
   } catch {

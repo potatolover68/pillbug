@@ -1,5 +1,6 @@
 import type { NodePack } from "@nodish/core";
 import { defineType } from "@nodish/core";
+import { mediaWikiNodes } from "./MediaWiki.js";
 import { Title, titleNodes } from "./Title.js";
 
 export const pack: NodePack = {
@@ -7,5 +8,8 @@ export const pack: NodePack = {
   types: {
     [Title.id]: defineType(Title),
   },
-  nodeTypes: titleNodes,
+  nodeTypes: {
+    ...titleNodes,
+    ...mediaWikiNodes,
+  },
 };

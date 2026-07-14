@@ -11,6 +11,7 @@ import {
   listNamespaceOptions,
   loggedIn,
   loggedInAs,
+  namespaceEpoch,
   persistWikiConfig,
   prefetchMode,
   wikiOrigin,
@@ -70,6 +71,12 @@ watch(loggedIn, (ok) => {
   if (ok && selectedNamespaces.value.length === 0) {
     selectedNamespaces.value = [0];
   }
+});
+
+watch(namespaceEpoch, () => {
+  const valid = new Set(namespaceChoices.value.map((ns) => ns.id));
+  const kept = selectedNamespaces.value.filter((id) => valid.has(id));
+  selectedNamespaces.value = kept.length > 0 ? kept : [0];
 });
 
 const queueCount = computed(() => pageQueue.value.length);
