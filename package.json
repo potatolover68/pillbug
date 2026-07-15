@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@nodish/base": "^0.2.2",
-    "@nodish/core": "^0.3.1",
+    "@nodish/core": "^0.4.0",
     "@vueuse/core": "^14.3.0",
     "diff-match-patch": "^1.0.5",
     "idb": "^8.0.3",
