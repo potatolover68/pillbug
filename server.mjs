@@ -7,12 +7,15 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import handler from "serve-handler";
+import {
+  allowedWikiOrigin,
+  assertProxyAccess,
+  WIKI_ORIGIN_HEADER,
+} from "./wiki-proxy-guard.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST = path.join(__dirname, "dist");
 const PORT = Number(process.env.PORT) || 8000;
-const DEFAULT_WIKI_ORIGIN = "https://en.wikipedia.org";
-const WIKI_ORIGIN_HEADER = "x-pillbug-wiki-origin";
 
 const HOP_BY_HOP = new Set([
   "connection",
@@ -31,15 +34,6 @@ const HOP_BY_HOP = new Set([
   "content-length",
 ]);
 
-function normalizeOrigin(raw) {
-  if (!raw) return DEFAULT_WIKI_ORIGIN;
-  try {
-    return new URL(String(raw).trim()).origin;
-  } catch {
-    return DEFAULT_WIKI_ORIGIN;
-  }
-}
-
 function isWikiProxyPath(pathname) {
   return (
     pathname === "/w/api.php" ||
@@ -56,9 +50,38 @@ function rewriteSetCookie(header, secure) {
   return out.replace(/;\s*SameSite=None/gi, "; SameSite=Lax");
 }
 
+function reject(res, status, message) {
+  res.statusCode = status;
+  res.setHeader("content-type", "text/plain; charset=utf-8");
+  res.end(message);
+}
+
 async function proxyWiki(req, res) {
   const incoming = new URL(req.url || "/", `http://${req.headers.host}`);
-  const wikiOrigin = normalizeOrigin(req.headers[WIKI_ORIGIN_HEADER]);
+  const wikiOrigin = allowedWikiOrigin(req.headers[WIKI_ORIGIN_HEADER]);
+  if (!wikiOrigin) {
+    reject(
+      res,
+      403,
+      "Wiki origin not allowed (use https://*.wikipedia.org, *.wikimedia.org, or *.wiktionary.org)",
+    );
+    return;
+  }
+
+  /** @type {Buffer | undefined} */
+  let body;
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    body = Buffer.concat(chunks);
+  }
+
+  const gate = await assertProxyAccess(req, wikiOrigin, body);
+  if (!gate.ok) {
+    reject(res, gate.status, gate.message);
+    return;
+  }
+
   const target = new URL(
     `${incoming.pathname}${incoming.search}`,
     wikiOrigin,
@@ -86,19 +109,19 @@ async function proxyWiki(req, res) {
     redirect: "manual",
   };
 
-  if (req.method !== "GET" && req.method !== "HEAD") {
-    const chunks = [];
-    for await (const chunk of req) chunks.push(chunk);
-    init.body = Buffer.concat(chunks);
+  if (body) {
+    init.body = body;
   }
 
   let upstream;
   try {
     upstream = await fetch(target, init);
   } catch (err) {
-    res.statusCode = 502;
-    res.setHeader("content-type", "text/plain; charset=utf-8");
-    res.end(`Wiki proxy error: ${err instanceof Error ? err.message : err}`);
+    reject(
+      res,
+      502,
+      `Wiki proxy error: ${err instanceof Error ? err.message : err}`,
+    );
     return;
   }
 

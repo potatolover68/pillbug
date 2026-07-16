@@ -21,6 +21,8 @@ interface ReviewLogEntry {
 }
 
 export const editSummary = ref("");
+/** When true, saves are marked minor on the wiki. */
+export const markMinor = ref(false);
 export const reviewLogs = ref<ReviewLogEntry[]>([]);
 const currentPage = ref<string | null>(null);
 export const currentBefore = ref("");
@@ -146,7 +148,7 @@ export async function applyCurrent(): Promise<void> {
   saveError.value = null;
 
   try {
-    await savePage(page, currentAfter.value, editSummary.value);
+    await savePage(page, currentAfter.value, editSummary.value, markMinor.value);
     markApplied(page);
     dequeueCurrent(pageQueue.value[0] ?? null, page);
     if (batchRunning.value) {
@@ -174,7 +176,7 @@ export async function undoCurrent(): Promise<void> {
     const summary = editSummary.value.trim()
       ? `Undid: ${editSummary.value.trim()}`
       : "Undid previous edit";
-    await savePage(entry.page, entry.before, summary);
+    await savePage(entry.page, entry.before, summary, markMinor.value);
     entry.applied = false;
     entry.undone = true;
     entry.timestamp = Date.now();

@@ -178,9 +178,10 @@ export async function savePage(
   title: string,
   text: string,
   summary = "",
+  minor = false,
 ): Promise<EditResult> {
   await assertEditableSession();
-  const result = await client.save(title, text, summary);
+  const result = await client.save(title, text, summary, minor);
   if (!result || result.result !== "Success") {
     throw new Error(
       result

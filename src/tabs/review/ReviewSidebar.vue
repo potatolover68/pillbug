@@ -7,6 +7,7 @@ import {
   canPrimaryAction,
   canSkip,
   editSummary,
+  markMinor,
   logStatus,
   primaryAction,
   reviewLogs,
@@ -51,6 +52,11 @@ async function onBatchToggle(): Promise<void> {
       placeholder="Edit summary…"
       rows="2"
     />
+
+    <label class="minor-toggle">
+      <input v-model="markMinor" type="checkbox" />
+      <span>Minor edit</span>
+    </label>
 
     <div class="panel-actions">
       <button
@@ -118,6 +124,21 @@ async function onBatchToggle(): Promise<void> {
   gap: var(--pad);
   flex: 1;
   min-height: 0;
+}
+
+.minor-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--panel-muted);
+  line-height: var(--row-h);
+  cursor: pointer;
+  user-select: none;
+}
+
+.minor-toggle input {
+  margin: 0;
+  accent-color: var(--accent);
 }
 
 .log-list {

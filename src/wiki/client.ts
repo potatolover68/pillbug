@@ -177,6 +177,7 @@ export class WikiClient {
     title: string,
     text: string,
     summary = "",
+    minor = false,
   ): Promise<EditResult> {
     const session = this.syncContext();
     const data = (await session.request(
@@ -186,6 +187,7 @@ export class WikiClient {
         text,
         summary,
         bot: true,
+        ...(minor ? { minor: true } : { notminor: true }),
       },
       { method: "POST", tokenType: "csrf" },
     )) as { edit?: EditResult };
