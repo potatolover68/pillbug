@@ -31,6 +31,9 @@ export const saveError = ref<string | null>(null);
 export const saveBusy = ref(false);
 export const batchError = ref<string | null>(null);
 
+/** Aborted on Stop so in-flight takeNextPrepared exits promptly. */
+let batchAbort: AbortController | null = null;
+
 export const canSkip = computed(() => currentPage.value !== null);
 
 const selectedEntry = computed(() =>
@@ -252,18 +255,21 @@ export function logStatus(
   return "pending";
 }
 
-async function processNextInQueue(): Promise<void> {
+async function processNextInQueue(signal?: AbortSignal): Promise<void> {
   if (!batchRunning.value || !loggedIn.value) return;
 
+  const activeSignal = signal ?? batchAbort?.signal;
   batchError.value = null;
 
   while (batchRunning.value && pageQueue.value.length > 0) {
+    if (activeSignal?.aborted) break;
+
     const rawHead = pageQueue.value[0];
     if (!rawHead) break;
 
     try {
-      const prepared = await takeNextPrepared();
-      if (!prepared) break;
+      const prepared = await takeNextPrepared(activeSignal);
+      if (!prepared || activeSignal?.aborted) break;
 
       const { outcome } = prepared;
 
@@ -294,6 +300,7 @@ async function processNextInQueue(): Promise<void> {
       ensurePrefetch();
       return;
     } catch (error) {
+      if (activeSignal?.aborted) break;
       batchError.value =
         `${rawHead}: ` +
         (error instanceof Error ? error.message : String(error));
@@ -303,6 +310,7 @@ async function processNextInQueue(): Promise<void> {
   }
 
   batchRunning.value = false;
+  batchAbort = null;
   stopPrefetch();
 }
 
@@ -312,13 +320,17 @@ export async function startBatch(): Promise<void> {
     batchError.value = "Page queue is empty — add titles in Config";
     return;
   }
+  batchAbort?.abort();
+  batchAbort = new AbortController();
   batchRunning.value = true;
   batchError.value = null;
   ensurePrefetch();
-  await processNextInQueue();
+  await processNextInQueue(batchAbort.signal);
 }
 
 export function stopBatch(): void {
   batchRunning.value = false;
+  batchAbort?.abort();
+  batchAbort = null;
   stopPrefetch();
 }

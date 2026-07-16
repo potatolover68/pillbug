@@ -109,15 +109,21 @@ function handleAutoOutcome(
   return "keep";
 }
 
+function prefetchStillActive(gen: number): boolean {
+  return shouldPrefetch && gen === prefetchGeneration;
+}
+
 /**
  * Resolve the next queue head using cache when possible.
- * Returns null if the queue was emptied by auto-skips / errors.
+ * Returns null if the queue was emptied by auto-skips / errors, or if aborted.
  */
-export async function takeNextPrepared(): Promise<{
+export async function takeNextPrepared(signal?: AbortSignal): Promise<{
   page: WikiPage;
   outcome: GraphRunOutcome;
 } | null> {
   while (pageQueue.value.length > 0) {
+    if (signal?.aborted) return null;
+
     const raw = pageQueue.value[0];
     if (!raw) break;
 
@@ -127,11 +133,13 @@ export async function takeNextPrepared(): Promise<{
     }
 
     if (cached?.status === "content") {
+      if (signal?.aborted) return null;
       const outcome = runProcessOnly(
         cached.page.titleObj,
         cached.page.content,
         cached.page.prefixed,
       );
+      if (signal?.aborted) return null;
       if (handleAutoOutcome(raw, outcome) === "removed") continue;
       return { page: cached.page, outcome };
     }
@@ -139,9 +147,12 @@ export async function takeNextPrepared(): Promise<{
     // Miss or still pending — fetch now (wait if pending briefly by refetching).
     try {
       const page = await getPage(raw);
+      if (signal?.aborted) return null;
+
       const mode: PrefetchMode = prefetchMode.value;
       if (mode === "A") {
         const skip = runSkipOnly(page.titleObj, page.content, page.prefixed);
+        if (signal?.aborted) return null;
         if (skip.kind !== "continue") {
           if (handleAutoOutcome(raw, skip) === "removed") continue;
         }
@@ -150,6 +161,7 @@ export async function takeNextPrepared(): Promise<{
           page.content,
           page.prefixed,
         );
+        if (signal?.aborted) return null;
         if (handleAutoOutcome(raw, outcome) === "removed") continue;
         return { page, outcome };
       }
@@ -159,11 +171,12 @@ export async function takeNextPrepared(): Promise<{
         page.content,
         page.prefixed,
       );
+      if (signal?.aborted) return null;
       if (handleAutoOutcome(raw, outcome) === "removed") continue;
       return { page, outcome };
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : String(error);
+      if (signal?.aborted) return null;
+      const message = error instanceof Error ? error.message : String(error);
       onAutoError?.(`${raw}: ${message}`);
       removeFromQueue(raw);
       dropPrep(raw);
@@ -189,7 +202,7 @@ async function runPrefetchLoop(): Promise<void> {
   const gen = prefetchGeneration;
 
   try {
-    while (shouldPrefetch && gen === prefetchGeneration) {
+    while (prefetchStillActive(gen)) {
       const mode = prefetchMode.value;
       // Titles after the current head (index 0 is under review or about to be).
       const candidates = pageQueue.value.slice(1, 1 + PREFETCH_WINDOW);
@@ -203,14 +216,16 @@ async function runPrefetchLoop(): Promise<void> {
       setPrep(next, { status: "pending" });
       try {
         const page = await getPage(next);
-        if (gen !== prefetchGeneration || !shouldPrefetch) break;
+        if (!prefetchStillActive(gen)) break;
 
         if (mode === "A") {
           const skip = runSkipOnly(page.titleObj, page.content, page.prefixed);
+          if (!prefetchStillActive(gen)) break;
           if (skip.kind !== "continue") {
             handleAutoOutcome(next, skip);
             continue;
           }
+          if (!prefetchStillActive(gen)) break;
           setPrep(page.prefixed, { status: "content", page });
           // Also key by raw queue string if different
           if (next !== page.prefixed) {
@@ -225,7 +240,9 @@ async function runPrefetchLoop(): Promise<void> {
             page.content,
             page.prefixed,
           );
+          if (!prefetchStillActive(gen)) break;
           if (handleAutoOutcome(next, outcome) === "removed") continue;
+          if (!prefetchStillActive(gen)) break;
           if (outcome.kind === "review") {
             const entry: PrepEntry = {
               status: "ready",
@@ -239,9 +256,8 @@ async function runPrefetchLoop(): Promise<void> {
           }
         }
       } catch (error) {
-        if (gen !== prefetchGeneration) break;
-        const message =
-          error instanceof Error ? error.message : String(error);
+        if (!prefetchStillActive(gen)) break;
+        const message = error instanceof Error ? error.message : String(error);
         onAutoError?.(`${next}: ${message}`);
         removeFromQueue(next);
         dropPrep(next);
@@ -250,7 +266,7 @@ async function runPrefetchLoop(): Promise<void> {
   } finally {
     prefetchRunning = false;
     // If more work appeared, schedule another pass.
-    if (shouldPrefetch && gen === prefetchGeneration) {
+    if (prefetchStillActive(gen)) {
       const needsMore = pageQueue.value
         .slice(1, 1 + PREFETCH_WINDOW)
         .some((t) => {
