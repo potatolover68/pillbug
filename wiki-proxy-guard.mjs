@@ -128,13 +128,15 @@ export function isCheckPageAllowed(name, lists) {
 /**
  * @param {import('node:http').IncomingMessage} req
  * @param {string} wikiOrigin
+ * @param {string | null | undefined} [bearer]
  * @returns {Promise<string | null>}
  */
-export async function resolveWikiUsername(req, wikiOrigin) {
+export async function resolveWikiUsername(req, wikiOrigin, bearer) {
   const cookie = req.headers.cookie;
-  if (!cookie || typeof cookie !== "string") return null;
+  const hasCookie = Boolean(cookie && typeof cookie === "string");
+  if (!hasCookie && !bearer) return null;
 
-  const cacheKey = `${wikiOrigin}\n${cookie}`;
+  const cacheKey = `${wikiOrigin}\n${bearer || ""}\n${hasCookie ? cookie : ""}`;
   const cached = userinfoCache.get(cacheKey);
   const now = Date.now();
   if (cached && cached.expires > now) return cached.name;
@@ -146,13 +148,15 @@ export async function resolveWikiUsername(req, wikiOrigin) {
     url.searchParams.set("format", "json");
     url.searchParams.set("formatversion", "2");
 
-    const res = await fetch(url, {
-      headers: {
-        cookie,
-        "user-agent": PROXY_UA,
-        "accept-encoding": "identity",
-      },
-    });
+    /** @type {Record<string, string>} */
+    const headers = {
+      "user-agent": PROXY_UA,
+      "accept-encoding": "identity",
+    };
+    if (hasCookie) headers.cookie = /** @type {string} */ (cookie);
+    if (bearer) headers.authorization = `Bearer ${bearer}`;
+
+    const res = await fetch(url, { headers });
     if (!res.ok) {
       userinfoCache.set(cacheKey, { name: null, expires: now + 30_000 });
       return null;
@@ -220,14 +224,18 @@ export function isLoginHandshake(req, body) {
 
 /**
  * Require a logged-in wiki session, except during the login handshake.
+ * @param {import('node:http').IncomingMessage} req
+ * @param {string} wikiOrigin
+ * @param {Buffer | undefined} body
+ * @param {string | null | undefined} [bearer]
  * @returns {Promise<{ ok: true, name: string | null } | { ok: false, status: number, message: string }>}
  */
-export async function assertLoggedIn(req, wikiOrigin, body) {
+export async function assertLoggedIn(req, wikiOrigin, body, bearer) {
   if (isLoginHandshake(req, body)) {
     return { ok: true, name: lgnameFromBody(body) };
   }
 
-  const name = await resolveWikiUsername(req, wikiOrigin);
+  const name = await resolveWikiUsername(req, wikiOrigin, bearer);
   if (!name) {
     return {
       ok: false,
@@ -267,10 +275,14 @@ export async function assertEnwikiCheckPage(name) {
 
 /**
  * Full proxy access check: login required, plus CheckPage on enwiki.
+ * @param {import('node:http').IncomingMessage} req
+ * @param {string} wikiOrigin
+ * @param {Buffer | undefined} body
+ * @param {string | null | undefined} [bearer]
  * @returns {Promise<{ ok: true } | { ok: false, status: number, message: string }>}
  */
-export async function assertProxyAccess(req, wikiOrigin, body) {
-  const auth = await assertLoggedIn(req, wikiOrigin, body);
+export async function assertProxyAccess(req, wikiOrigin, body, bearer) {
+  const auth = await assertLoggedIn(req, wikiOrigin, body, bearer);
   if (!auth.ok) return auth;
 
   if (isEnWikipedia(wikiOrigin)) {

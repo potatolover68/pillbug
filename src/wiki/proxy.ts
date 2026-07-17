@@ -1,5 +1,6 @@
 /* eslint-disable */
-// @ts-nocheck — loads shared ESM guard used by server.mjs
+// @ts-nocheck — loads shared ESM modules used by server.mjs
+import "dotenv/config";
 import type { Plugin, ProxyOptions } from "vite";
 import type { IncomingMessage, ClientRequest } from "node:http";
 import {
@@ -8,6 +9,10 @@ import {
   isLoginHandshake,
   WIKI_ORIGIN_HEADER,
 } from "../../wiki-proxy-guard.mjs";
+import {
+  getOAuthAccessToken,
+  handleOAuthHttp,
+} from "../../oauth-server.mjs";
 import { DEFAULT_WIKI_ORIGIN } from "./defaults.js";
 
 function originFromRequest(req: IncomingMessage): string | null {
@@ -55,6 +60,11 @@ function mediawikiProxy(pathPrefix: string, rewriteTo: string): ProxyOptions {
             // keep existing host
           }
         }
+        const bearer = (req as IncomingMessage & { pillbugBearer?: string })
+          .pillbugBearer;
+        if (bearer) {
+          proxyReq.setHeader("authorization", `Bearer ${bearer}`);
+        }
       });
       proxy.on("proxyRes", (proxyRes: IncomingMessage) => {
         rewriteProxySetCookieHeaders(proxyRes);
@@ -77,6 +87,19 @@ export function mediawikiProxyPlugin(): Plugin {
     name: "pillbug-mw-api-proxy",
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
+        try {
+          if (await handleOAuthHttp(req as IncomingMessage, res, { secure: false })) {
+            return;
+          }
+        } catch (err) {
+          res.statusCode = 500;
+          res.setHeader("content-type", "text/plain; charset=utf-8");
+          res.end(
+            `OAuth error: ${err instanceof Error ? err.message : err}`,
+          );
+          return;
+        }
+
         const url = req.url ?? "";
         if (
           !(url.startsWith("/w/api.php") || url.startsWith("/w/rest.php"))
@@ -107,18 +130,24 @@ export function mediawikiProxyPlugin(): Plugin {
           return;
         }
 
-        // Avoid consuming POST bodies in Vite (proxy still needs them).
-        // Login POSTs are allowed through; other unauthenticated traffic is blocked
-        // once we can see cookies / handshake GETs.
-        const incoming = req as IncomingMessage;
+        const incoming = req as IncomingMessage & { pillbugBearer?: string };
+        const bearer = await getOAuthAccessToken(incoming);
+        if (bearer) incoming.pillbugBearer = bearer;
+
         if (
           !isLoginHandshake(incoming, undefined) &&
           (incoming.headers.cookie ||
+            bearer ||
             incoming.method === "GET" ||
             incoming.method === "HEAD" ||
             url.startsWith("/w/rest.php"))
         ) {
-          const gate = await assertProxyAccess(incoming, origin, undefined);
+          const gate = await assertProxyAccess(
+            incoming,
+            origin,
+            undefined,
+            bearer,
+          );
           if (!gate.ok) {
             res.statusCode = gate.status;
             res.setHeader("content-type", "text/plain; charset=utf-8");

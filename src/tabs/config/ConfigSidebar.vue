@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import {
   applyWikiOrigin,
   canLogin,
@@ -7,13 +7,15 @@ import {
   loginBusy,
   loginError,
   loggedIn,
-  logout,
+  logout as wikiLogout,
   password,
   username,
   wikiOrigin,
 } from "../../wiki/session";
 
 const originDraft = ref(wikiOrigin.value);
+const oauthEnabled = ref(false);
+const authConfigLoaded = ref(false);
 
 watch(wikiOrigin, (value) => {
   originDraft.value = value;
@@ -34,6 +36,42 @@ const canSetOrigin = computed(() => {
 function onSetOrigin(): void {
   applyWikiOrigin(originDraft.value);
 }
+
+async function loadAuthConfig(): Promise<void> {
+  try {
+    const res = await fetch("/api/auth/config", { credentials: "include" });
+    if (res.ok) {
+      const data = (await res.json()) as { oauth?: boolean };
+      oauthEnabled.value = Boolean(data.oauth);
+    }
+  } catch {
+    oauthEnabled.value = false;
+  } finally {
+    authConfigLoaded.value = true;
+  }
+}
+
+function startOAuth(): void {
+  window.location.assign("/api/oauth/start");
+}
+
+async function onLogout(): Promise<void> {
+  if (oauthEnabled.value) {
+    try {
+      await fetch("/api/oauth/logout", {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch {
+      /* still clear local session */
+    }
+  }
+  await wikiLogout();
+}
+
+onMounted(() => {
+  void loadAuthConfig();
+});
 </script>
 
 <template>
@@ -60,46 +98,69 @@ function onSetOrigin(): void {
       </div>
     </label>
 
-    <label class="panel-field">
-      <span class="panel-label">Username</span>
-      <input
-        v-model="username"
-        class="panel-input"
-        type="text"
-        placeholder="User@BotName"
-        autocomplete="username"
-      />
-    </label>
+    <template v-if="authConfigLoaded && oauthEnabled">
+      <div class="panel-actions">
+        <button
+          class="panel-btn"
+          type="button"
+          :disabled="loggedIn || loginBusy"
+          @click="startOAuth"
+        >
+          OAuth Login
+        </button>
+        <button
+          class="panel-btn"
+          type="button"
+          :disabled="!loggedIn || loginBusy"
+          @click="onLogout"
+        >
+          Logout
+        </button>
+      </div>
+    </template>
 
-    <label class="panel-field">
-      <span class="panel-label">Bot password</span>
-      <input
-        v-model="password"
-        class="panel-input"
-        type="password"
-        placeholder="Not stored"
-        autocomplete="current-password"
-      />
-    </label>
+    <template v-else-if="authConfigLoaded">
+      <label class="panel-field">
+        <span class="panel-label">Username</span>
+        <input
+          v-model="username"
+          class="panel-input"
+          type="text"
+          placeholder="User@BotName"
+          autocomplete="username"
+        />
+      </label>
 
-    <div class="panel-actions">
-      <button
-        class="panel-btn"
-        type="button"
-        :disabled="!canLogin"
-        @click="login"
-      >
-        {{ loginBusy ? "…" : "Login" }}
-      </button>
-      <button
-        class="panel-btn"
-        type="button"
-        :disabled="!loggedIn || loginBusy"
-        @click="logout"
-      >
-        Logout
-      </button>
-    </div>
+      <label class="panel-field">
+        <span class="panel-label">Bot password</span>
+        <input
+          v-model="password"
+          class="panel-input"
+          type="password"
+          placeholder="Not stored"
+          autocomplete="current-password"
+        />
+      </label>
+
+      <div class="panel-actions">
+        <button
+          class="panel-btn"
+          type="button"
+          :disabled="!canLogin"
+          @click="login"
+        >
+          {{ loginBusy ? "…" : "Login" }}
+        </button>
+        <button
+          class="panel-btn"
+          type="button"
+          :disabled="!loggedIn || loginBusy"
+          @click="onLogout"
+        >
+          Logout
+        </button>
+      </div>
+    </template>
 
     <p v-if="loginError" class="panel-status error">{{ loginError }}</p>
   </div>

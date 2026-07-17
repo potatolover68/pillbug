@@ -101,7 +101,7 @@ function assertNamedAccount(
   }
   if (info.temp === true) {
     throw new Error(
-      "Session is a temporary (logged-out) account — log in with a bot password",
+      "Session is a temporary (logged-out) account — log in again",
     );
   }
   const name =

@@ -1,7 +1,7 @@
 /**
- * Production server for Toolforge: static SPA + MediaWiki CORS proxy.
- * Proxies /w/api.php and /w/rest.php/* using X-Pillbug-Wiki-Origin.
+ * Production server for Toolforge: static SPA + MediaWiki CORS proxy + OAuth.
  */
+import "dotenv/config";
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
@@ -12,6 +12,10 @@ import {
   assertProxyAccess,
   WIKI_ORIGIN_HEADER,
 } from "./wiki-proxy-guard.mjs";
+import {
+  getOAuthAccessToken,
+  handleOAuthHttp,
+} from "./oauth-server.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST = path.join(__dirname, "dist");
@@ -28,7 +32,6 @@ const HOP_BY_HOP = new Set([
   "upgrade",
   "host",
   WIKI_ORIGIN_HEADER,
-  // Node fetch decompresses; never advertise/pass encoding through.
   "accept-encoding",
   "content-encoding",
   "content-length",
@@ -76,7 +79,8 @@ async function proxyWiki(req, res) {
     body = Buffer.concat(chunks);
   }
 
-  const gate = await assertProxyAccess(req, wikiOrigin, body);
+  const bearer = await getOAuthAccessToken(req);
+  const gate = await assertProxyAccess(req, wikiOrigin, body, bearer);
   if (!gate.ok) {
     reject(res, gate.status, gate.message);
     return;
@@ -99,8 +103,10 @@ async function proxyWiki(req, res) {
     }
   }
   headers.set("host", new URL(wikiOrigin).host);
-  // Ask for plain bytes so we don't fight Node fetch's auto-decompress.
   headers.set("accept-encoding", "identity");
+  if (bearer) {
+    headers.set("authorization", `Bearer ${bearer}`);
+  }
 
   /** @type {RequestInit} */
   const init = {
@@ -147,6 +153,15 @@ async function proxyWiki(req, res) {
 }
 
 const server = http.createServer(async (req, res) => {
+  try {
+    if (await handleOAuthHttp(req, res)) return;
+  } catch (err) {
+    res.statusCode = 500;
+    res.setHeader("content-type", "text/plain; charset=utf-8");
+    res.end(`Server error: ${err instanceof Error ? err.message : err}`);
+    return;
+  }
+
   const pathname = new URL(req.url || "/", `http://${req.headers.host}`)
     .pathname;
 
@@ -179,5 +194,5 @@ if (!fs.existsSync(DIST)) {
 }
 
 server.listen(PORT, () => {
-  console.log(`[pillbug] listening on :${PORT} (static + /w/* wiki proxy)`);
+  console.log(`[pillbug] listening on :${PORT} (static + /w/* + oauth)`);
 });
