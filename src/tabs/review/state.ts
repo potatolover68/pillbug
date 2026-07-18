@@ -36,11 +36,20 @@ export const batchError = ref<string | null>(null);
 /** Aborted on Stop so in-flight takeNextPrepared exits promptly. */
 let batchAbort: AbortController | null = null;
 
-export const canSkip = computed(() => currentPage.value !== null);
+export const canSkip = computed(
+  () => currentPage.value !== null && selectedLogId.value === null,
+);
 
 const selectedEntry = computed(() =>
   reviewLogs.value.find((entry) => entry.id === selectedLogId.value),
 );
+
+/** Live queue review saved while browsing a log entry. */
+let liveReview: {
+  page: string;
+  before: string;
+  after: string;
+} | null = null;
 
 export const primaryAction = computed<"save" | "undo">(() => {
   const entry = selectedEntry.value;
@@ -117,12 +126,41 @@ function setCurrentReview(
   currentBefore.value = before;
   currentAfter.value = after;
   selectedLogId.value = null;
+  liveReview = null;
   saveError.value = null;
+}
+
+export function clearLogSelection(): void {
+  selectedLogId.value = null;
+  saveError.value = null;
+  if (liveReview) {
+    currentPage.value = liveReview.page;
+    currentBefore.value = liveReview.before;
+    currentAfter.value = liveReview.after;
+    return;
+  }
+  // No stashed live review (e.g. opened a log after the queue was empty).
+  currentPage.value = null;
+  currentBefore.value = "";
+  currentAfter.value = "";
 }
 
 export function selectLogEntry(id: string): void {
   const entry = reviewLogs.value.find((row) => row.id === id);
   if (!entry) return;
+
+  if (selectedLogId.value === id) {
+    clearLogSelection();
+    return;
+  }
+
+  if (selectedLogId.value === null && currentPage.value !== null) {
+    liveReview = {
+      page: currentPage.value,
+      before: currentBefore.value,
+      after: currentAfter.value,
+    };
+  }
 
   selectedLogId.value = id;
   currentPage.value = entry.page;
@@ -214,7 +252,7 @@ function appendLogEntry(
 
 export function skipCurrent(): void {
   const page = currentPage.value;
-  if (!page) return;
+  if (!page || selectedLogId.value !== null) return;
 
   const existing = findLogByPage(page);
   const now = Date.now();
