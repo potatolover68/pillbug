@@ -12,6 +12,7 @@ import {
   username,
   wikiOrigin,
 } from "../../wiki/session";
+import ProjectsList from "./ProjectsList.vue";
 
 const originDraft = ref(wikiOrigin.value);
 const oauthEnabled = ref(false);
@@ -163,6 +164,8 @@ onMounted(() => {
     </template>
 
     <p v-if="loginError" class="panel-status error">{{ loginError }}</p>
+
+    <ProjectsList />
   </div>
 </template>
 
@@ -173,7 +176,7 @@ onMounted(() => {
   gap: var(--pad);
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 .origin-row {

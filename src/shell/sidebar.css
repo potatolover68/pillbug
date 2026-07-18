@@ -55,6 +55,12 @@
   border-radius: 2px;
 }
 
+/* Native option popups often use a light system background; keep text dark. */
+.pillbug-sidebar select.panel-input option {
+  color: #111;
+  background: #fff;
+}
+
 .pillbug-sidebar .panel-textarea {
   min-height: calc(var(--row-h) * 2);
   resize: vertical;
