@@ -4,11 +4,13 @@ import {
   applyCurrent,
   batchError,
   batchRunning,
+  canManualEdit,
   canPrimaryAction,
   canSkip,
   editSummary,
   markMinor,
   logStatus,
+  manualEditing,
   primaryAction,
   reviewLogs,
   saveBusy,
@@ -18,6 +20,7 @@ import {
   skipCurrent,
   startBatch,
   stopBatch,
+  toggleManualEdit,
   undoCurrent,
 } from "./state";
 import { pageQueue } from "../../wiki/queue";
@@ -53,16 +56,30 @@ async function onBatchToggle(): Promise<void> {
       rows="2"
     />
 
-    <label class="minor-toggle">
-      <input v-model="markMinor" type="checkbox" />
-      <span>Minor edit</span>
-    </label>
+    <div class="minor-row">
+      <label class="minor-toggle">
+        <input v-model="markMinor" type="checkbox" />
+        <span>Minor edit</span>
+      </label>
+      <button
+        class="panel-btn edit-btn"
+        type="button"
+        :disabled="!canManualEdit"
+        :title="manualEditing ? 'Stop editing' : 'Edit ContentAfter'"
+        @click="toggleManualEdit"
+      >
+        {{ manualEditing ? "Stop editing" : "Edit" }}
+      </button>
+    </div>
 
     <div class="panel-actions">
       <button
         class="panel-btn"
         type="button"
-        :disabled="(!loggedIn && !batchRunning) || (!batchRunning && pageQueue.length === 0)"
+        :disabled="
+          (!loggedIn && !batchRunning) ||
+          (!batchRunning && pageQueue.length === 0)
+        "
         @click="onBatchToggle"
       >
         {{ batchRunning ? "Stop" : "Start" }}
@@ -126,10 +143,19 @@ async function onBatchToggle(): Promise<void> {
   min-height: 0;
 }
 
+.minor-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
 .minor-toggle {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex: 1;
+  min-width: 0;
   color: var(--panel-muted);
   line-height: var(--row-h);
   cursor: pointer;
@@ -139,6 +165,12 @@ async function onBatchToggle(): Promise<void> {
 .minor-toggle input {
   margin: 0;
   accent-color: var(--accent);
+}
+
+.edit-btn {
+  flex: none;
+  width: auto;
+  padding: 0 6px;
 }
 
 .log-list {

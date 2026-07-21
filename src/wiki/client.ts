@@ -147,10 +147,7 @@ export class WikiClient {
   async readPage(title: string): Promise<RestPage> {
     const session = this.syncContext();
     try {
-      return (await getJson(
-        session,
-        path`/v1/page/${title}`,
-      )) as RestPage;
+      return (await getJson(session, path`/v1/page/${title}`)) as RestPage;
     } catch (error) {
       if (error instanceof RestApiClientError && error.status === 404) {
         throw new Error("Page does not exist");

@@ -264,8 +264,7 @@ export function parseProjectRecord(raw: unknown): ProjectRecord {
   }
   return {
     name: obj.name.trim(),
-    updatedAt:
-      typeof obj.updatedAt === "number" ? obj.updatedAt : Date.now(),
+    updatedAt: typeof obj.updatedAt === "number" ? obj.updatedAt : Date.now(),
     process: obj.process,
     skip: obj.skip,
     queue: Array.isArray(obj.queue)

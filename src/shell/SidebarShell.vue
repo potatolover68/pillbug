@@ -28,7 +28,9 @@ defineProps<{
         :title="tab.label"
         @click="setActiveTab(tab.id as AppTab)"
       >
-        <span class="tab-label">{{ collapsed ? tab.label[0] : tab.label }}</span>
+        <span class="tab-label">{{
+          collapsed ? tab.label[0] : tab.label
+        }}</span>
       </button>
       <button
         class="collapse-btn"

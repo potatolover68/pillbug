@@ -16,8 +16,7 @@ import { createClient } from "redis";
 
 export const OAUTH_COOKIE = "pillbug_sid";
 
-const PROXY_UA =
-  "pillbug/0.1.0 (https://github.com/potatolover68/pillbug)";
+const PROXY_UA = "pillbug/0.1.0 (https://github.com/potatolover68/pillbug)";
 
 const DEFAULT_CALLBACK = "https://pillbug.toolforge.org/callback";
 const DEFAULT_MW_ORIGIN = "https://meta.wikimedia.org";
@@ -38,16 +37,13 @@ export function oauthEnabled() {
 }
 
 export function oauthCallbackUrl() {
-  return (
-    process.env.OAUTH_CALLBACK?.trim() || DEFAULT_CALLBACK
-  );
+  return process.env.OAUTH_CALLBACK?.trim() || DEFAULT_CALLBACK;
 }
 
 export function oauthMwOrigin() {
   try {
-    return new URL(
-      process.env.OAUTH_MW_ORIGIN?.trim() || DEFAULT_MW_ORIGIN,
-    ).origin;
+    return new URL(process.env.OAUTH_MW_ORIGIN?.trim() || DEFAULT_MW_ORIGIN)
+      .origin;
   } catch {
     return DEFAULT_MW_ORIGIN;
   }
@@ -213,7 +209,10 @@ export async function handleOAuthHttp(req, res, opts = {}) {
     opts.secure ??
     (req.headers["x-forwarded-proto"] === "https" ||
       Boolean(process.env.TOOL_TOOLFORGE_API_URL));
-  const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
+  const url = new URL(
+    req.url || "/",
+    `http://${req.headers.host || "localhost"}`,
+  );
   const { pathname } = url;
 
   if (pathname === "/api/auth/config" && req.method === "GET") {
@@ -232,7 +231,9 @@ export async function handleOAuthHttp(req, res, opts = {}) {
     ) {
       res.statusCode = 503;
       res.setHeader("content-type", "text/plain; charset=utf-8");
-      res.end("OAuth is not configured (missing OAUTH_CONSUMER / OAUTH_SECRET)");
+      res.end(
+        "OAuth is not configured (missing OAUTH_CONSUMER / OAUTH_SECRET)",
+      );
       return true;
     }
     return false;
@@ -256,7 +257,10 @@ export async function handleOAuthHttp(req, res, opts = {}) {
         PENDING_TTL_SEC,
       );
       res.statusCode = 302;
-      res.setHeader("set-cookie", sessionCookieHeader(secure, sid, PENDING_TTL_SEC));
+      res.setHeader(
+        "set-cookie",
+        sessionCookieHeader(secure, sid, PENDING_TTL_SEC),
+      );
       res.setHeader("location", authorizeUrl);
       res.end();
       return true;

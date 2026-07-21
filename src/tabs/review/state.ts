@@ -33,12 +33,48 @@ export const saveError = ref<string | null>(null);
 export const saveBusy = ref(false);
 export const batchError = ref<string | null>(null);
 
+/** Diff replaced by a ContentAfter textarea while true. */
+export const manualEditing = ref(false);
+/** ContentAfter when the current manual-edit session began; used for one-step Skip restore. */
+const preManualAfter = ref<string | null>(null);
+
 /** Aborted on Stop so in-flight takeNextPrepared exits promptly. */
 let batchAbort: AbortController | null = null;
 
-export const canSkip = computed(
-  () => currentPage.value !== null && selectedLogId.value === null,
-);
+export const canSkip = computed(() => {
+  if (currentPage.value === null) return false;
+  const canRestore =
+    preManualAfter.value !== null &&
+    currentAfter.value !== preManualAfter.value;
+  // Log view: Skip only restores a dirty manual edit (does not dequeue).
+  if (selectedLogId.value !== null) return canRestore;
+  return true;
+});
+
+export const canManualEdit = computed(() => currentPage.value !== null);
+
+function clearManualEditState(): void {
+  manualEditing.value = false;
+  preManualAfter.value = null;
+}
+
+export function toggleManualEdit(): void {
+  if (!canManualEdit.value) return;
+  if (manualEditing.value) {
+    manualEditing.value = false;
+    if (
+      preManualAfter.value !== null &&
+      currentAfter.value === preManualAfter.value
+    ) {
+      preManualAfter.value = null;
+    }
+    return;
+  }
+  if (preManualAfter.value === null) {
+    preManualAfter.value = currentAfter.value;
+  }
+  manualEditing.value = true;
+}
 
 const selectedEntry = computed(() =>
   reviewLogs.value.find((entry) => entry.id === selectedLogId.value),
@@ -67,10 +103,7 @@ export const canPrimaryAction = computed(() => {
   if (primaryAction.value === "undo") {
     const entry = selectedEntry.value;
     return Boolean(
-      loggedIn.value &&
-        entry?.applied &&
-        !entry.undone &&
-        currentPage.value,
+      loggedIn.value && entry?.applied && !entry.undone && currentPage.value,
     );
   }
   return canAct.value && loggedIn.value;
@@ -117,22 +150,20 @@ function markApplied(page: string): void {
   selectedLogId.value = entry.id;
 }
 
-function setCurrentReview(
-  page: string,
-  before: string,
-  after: string,
-): void {
+function setCurrentReview(page: string, before: string, after: string): void {
   currentPage.value = page;
   currentBefore.value = before;
   currentAfter.value = after;
   selectedLogId.value = null;
   liveReview = null;
+  clearManualEditState();
   saveError.value = null;
 }
 
 export function clearLogSelection(): void {
   selectedLogId.value = null;
   saveError.value = null;
+  clearManualEditState();
   if (liveReview) {
     currentPage.value = liveReview.page;
     currentBefore.value = liveReview.before;
@@ -162,6 +193,7 @@ export function selectLogEntry(id: string): void {
     };
   }
 
+  clearManualEditState();
   selectedLogId.value = id;
   currentPage.value = entry.page;
   currentBefore.value = entry.before;
@@ -186,15 +218,20 @@ export async function applyCurrent(): Promise<void> {
   saveError.value = null;
 
   try {
-    await savePage(page, currentAfter.value, editSummary.value, markMinor.value);
+    await savePage(
+      page,
+      currentAfter.value,
+      editSummary.value,
+      markMinor.value,
+    );
+    clearManualEditState();
     markApplied(page);
     dequeueCurrent(pageQueue.value[0] ?? null, page);
     if (batchRunning.value) {
       await processNextInQueue();
     }
   } catch (error) {
-    saveError.value =
-      error instanceof Error ? error.message : String(error);
+    saveError.value = error instanceof Error ? error.message : String(error);
   } finally {
     saveBusy.value = false;
   }
@@ -223,8 +260,7 @@ export async function undoCurrent(): Promise<void> {
     currentBefore.value = entry.before;
     currentAfter.value = entry.after;
   } catch (error) {
-    saveError.value =
-      error instanceof Error ? error.message : String(error);
+    saveError.value = error instanceof Error ? error.message : String(error);
   } finally {
     saveBusy.value = false;
   }
@@ -252,7 +288,21 @@ function appendLogEntry(
 
 export function skipCurrent(): void {
   const page = currentPage.value;
-  if (!page || selectedLogId.value !== null) return;
+  if (!page) return;
+
+  manualEditing.value = false;
+  if (
+    preManualAfter.value !== null &&
+    currentAfter.value !== preManualAfter.value
+  ) {
+    currentAfter.value = preManualAfter.value;
+    preManualAfter.value = null;
+    return;
+  }
+  preManualAfter.value = null;
+
+  // Historical log view: never dequeue / mark skipped via Skip.
+  if (selectedLogId.value !== null) return;
 
   const existing = findLogByPage(page);
   const now = Date.now();
@@ -329,11 +379,13 @@ async function processNextInQueue(signal?: AbortSignal): Promise<void> {
       if (pageQueue.value[0] !== outcome.prefixed) {
         pageQueue.value = [
           outcome.prefixed,
-          ...pageQueue.value.slice(1).filter(
-            (t) =>
-              t.toLowerCase() !== outcome.prefixed.toLowerCase() &&
-              t.toLowerCase() !== rawHead.toLowerCase(),
-          ),
+          ...pageQueue.value
+            .slice(1)
+            .filter(
+              (t) =>
+                t.toLowerCase() !== outcome.prefixed.toLowerCase() &&
+                t.toLowerCase() !== rawHead.toLowerCase(),
+            ),
         ];
       }
       dropPrep(outcome.prefixed, rawHead);

@@ -3,13 +3,14 @@ import { Diff } from "vue-diff";
 import "vue-diff/dist/index.css";
 import { nextTick, useTemplateRef, watch } from "vue";
 import DiffOverviewRuler from "../shared/DiffOverviewRuler.vue";
-import { currentAfter, currentBefore } from "./state";
+import { currentAfter, currentBefore, manualEditing } from "./state";
 
 const LINE_MIN_HEIGHT = 24;
 
 const containerRef = useTemplateRef<HTMLElement>("container");
 
 function scrollToFirstDiff(): void {
+  if (manualEditing.value) return;
   const viewer = containerRef.value?.querySelector(
     ".vue-diff-viewer",
   ) as HTMLElement | null;
@@ -26,7 +27,7 @@ function scrollToFirstDiff(): void {
   viewer.scrollTop = Math.max(0, top);
 }
 
-watch([currentBefore, currentAfter], async () => {
+watch([currentBefore, currentAfter, manualEditing], async () => {
   await nextTick();
   requestAnimationFrame(() => scrollToFirstDiff());
 });
@@ -34,13 +35,21 @@ watch([currentBefore, currentAfter], async () => {
 
 <template>
   <div ref="container" class="review-diff">
-    <Diff :current="currentAfter" :prev="currentBefore" />
-    <DiffOverviewRuler
-      :root="containerRef"
-      :prev="currentBefore"
-      :current="currentAfter"
-      :line-min-height="LINE_MIN_HEIGHT"
+    <textarea
+      v-if="manualEditing"
+      v-model="currentAfter"
+      class="manual-edit"
+      spellcheck="false"
     />
+    <template v-else>
+      <Diff :current="currentAfter" :prev="currentBefore" />
+      <DiffOverviewRuler
+        :root="containerRef"
+        :prev="currentBefore"
+        :current="currentAfter"
+        :line-min-height="LINE_MIN_HEIGHT"
+      />
+    </template>
   </div>
 </template>
 
@@ -53,6 +62,29 @@ watch([currentBefore, currentAfter], async () => {
   height: 100%;
   min-height: 0;
   overflow: hidden;
+}
+
+.manual-edit {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 8px 12px;
+  border: none;
+  resize: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 16px;
+  line-height: 1.5;
+  color: #ddd;
+  background: #272822;
+  white-space: pre;
+  overflow: auto;
+}
+
+.manual-edit:focus {
+  outline: none;
 }
 
 .review-diff :deep(.vue-diff-wrapper) {

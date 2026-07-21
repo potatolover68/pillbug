@@ -154,10 +154,7 @@ function requireLoggedIn(): void {
 /** Re-check named (non-temp) session before editing. */
 async function assertEditableSession(): Promise<void> {
   requireLoggedIn();
-  if (
-    sessionOrigin.value &&
-    sessionOrigin.value !== normalizedWikiOrigin()
-  ) {
+  if (sessionOrigin.value && sessionOrigin.value !== normalizedWikiOrigin()) {
     clearSession();
     throw new Error("Wiki origin changed — log in again");
   }

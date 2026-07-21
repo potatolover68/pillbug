@@ -178,9 +178,7 @@ export async function deleteAllNamed(): Promise<void> {
     return;
   }
   if (
-    !window.confirm(
-      `Delete all ${count} project(s)? This cannot be undone.`,
-    )
+    !window.confirm(`Delete all ${count} project(s)? This cannot be undone.`)
   ) {
     return;
   }

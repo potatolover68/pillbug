@@ -136,14 +136,16 @@ export async function listFromSource(
           ...(ns ? { cmnamespace: ns } : {}),
         },
         (query) => {
-          const rows = (query.categorymembers as Array<{ title?: string }>) ?? [];
+          const rows =
+            (query.categorymembers as Array<{ title?: string }>) ?? [];
           return rows.map(titleFromRow).filter((t): t is string => Boolean(t));
         },
       );
     }
 
     case "linksTo": {
-      if (!source.title.trim()) throw new Error("Target page title is required");
+      if (!source.title.trim())
+        throw new Error("Target page title is required");
       if (!source.wikilinks && !source.transclusions && !source.fileUsage) {
         throw new Error("Select at least one link type");
       }
@@ -164,7 +166,9 @@ export async function listFromSource(
             },
             (query) => {
               const rows = (query.backlinks as Array<{ title?: string }>) ?? [];
-              return rows.map(titleFromRow).filter((t): t is string => Boolean(t));
+              return rows
+                .map(titleFromRow)
+                .filter((t): t is string => Boolean(t));
             },
           ),
         );
@@ -182,8 +186,11 @@ export async function listFromSource(
               ...(ns ? { einamespace: ns } : {}),
             },
             (query) => {
-              const rows = (query.embeddedin as Array<{ title?: string }>) ?? [];
-              return rows.map(titleFromRow).filter((t): t is string => Boolean(t));
+              const rows =
+                (query.embeddedin as Array<{ title?: string }>) ?? [];
+              return rows
+                .map(titleFromRow)
+                .filter((t): t is string => Boolean(t));
             },
           ),
         );
@@ -205,8 +212,11 @@ export async function listFromSource(
               ...(ns ? { iunamespace: ns } : {}),
             },
             (query) => {
-              const rows = (query.imageusage as Array<{ title?: string }>) ?? [];
-              return rows.map(titleFromRow).filter((t): t is string => Boolean(t));
+              const rows =
+                (query.imageusage as Array<{ title?: string }>) ?? [];
+              return rows
+                .map(titleFromRow)
+                .filter((t): t is string => Boolean(t));
             },
           ),
         );
@@ -234,8 +244,11 @@ export async function listFromSource(
                 aplimit: "max",
               },
               (query) => {
-                const rows = (query.allpages as Array<{ title?: string }>) ?? [];
-                return rows.map(titleFromRow).filter((t): t is string => Boolean(t));
+                const rows =
+                  (query.allpages as Array<{ title?: string }>) ?? [];
+                return rows
+                  .map(titleFromRow)
+                  .filter((t): t is string => Boolean(t));
               },
             ),
           );

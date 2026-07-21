@@ -28,6 +28,8 @@ export function removeFromQueue(...titles: string[]): void {
       .map((t) => t.toLowerCase()),
   );
   pageQueue.value = pageQueue.value.filter(
-    (t) => !keys.has(t.toLowerCase()) && !keys.has(t.replace(/_/g, " ").toLowerCase()),
+    (t) =>
+      !keys.has(t.toLowerCase()) &&
+      !keys.has(t.replace(/_/g, " ").toLowerCase()),
   );
 }

@@ -65,8 +65,7 @@ export function findTemplates(content: string): TemplateHit[] {
   return hits;
 }
 
-const CATEGORY_RE =
-  /\[\[\s*[Cc]ategory\s*:\s*([^\]|#]+)(?:\|[^\]]*)?\]\]/g;
+const CATEGORY_RE = /\[\[\s*[Cc]ategory\s*:\s*([^\]|#]+)(?:\|[^\]]*)?\]\]/g;
 
 export function findCategories(content: string): CategoryHit[] {
   const hits: CategoryHit[] = [];
@@ -100,9 +99,7 @@ export function contentHasTemplate(
   template: unknown,
 ): boolean {
   const want = templateName(template);
-  return findTemplates(content).some((t) =>
-    templateNamesMatch(t.name, want),
-  );
+  return findTemplates(content).some((t) => templateNamesMatch(t.name, want));
 }
 
 /** First-level `|name=` / `| name =` renames inside a template inner body. */

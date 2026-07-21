@@ -43,9 +43,7 @@ export function syncPreviewInputs(target?: NodeMap): void {
  * Strip Title/Content from Input ports before serialize — WikiTitle is not
  * JSON-safe and would round-trip as a plain object.
  */
-export function clearPreviewInputsFromMaps(
-  ...targets: NodeMap[]
-): void {
+export function clearPreviewInputsFromMaps(...targets: NodeMap[]): void {
   const maps = targets.length > 0 ? targets : [map.value, skipMap.value];
   for (const nodeMap of maps) {
     applyInputsToMap(nodeMap, { Title: undefined, Content: undefined });
@@ -67,10 +65,7 @@ function applyInputsToMap(
   }
 }
 
-export function setPreviewFromTest(
-  titleObj: WikiTitle,
-  content: string,
-): void {
+export function setPreviewFromTest(titleObj: WikiTitle, content: string): void {
   previewTitle.value = titleObj;
   previewContent.value = content;
   syncPreviewInputs();

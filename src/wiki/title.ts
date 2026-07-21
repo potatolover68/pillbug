@@ -79,7 +79,7 @@ function parse(
   // Same character class as mw.Title / mwn (legaltitlechars is stored for parity).
   const rInvalid = new RegExp(
     "[^" +
-      ' %!"$&\'()*,\\-./0-9:;=?@A-Z\\\\\\^_`a-z~+\\u0080-\\uFFFF' +
+      " %!\"$&'()*,\\-./0-9:;=?@A-Z\\\\\\^_`a-z~+\\u0080-\\uFFFF" +
       "]" +
       "|%[\\dA-Fa-f]{2}" +
       "|&[\\dA-Za-z\u0080-\uFFFF]+;" +
@@ -285,10 +285,7 @@ export class WikiTitle {
     return ext === null ? "" : "." + ext;
   }
 
-  static newFromText(
-    title: string,
-    namespace = 0,
-  ): WikiTitle | null {
+  static newFromText(title: string, namespace = 0): WikiTitle | null {
     const parsed = parse(title, namespace);
     if (!parsed) {
       return null;

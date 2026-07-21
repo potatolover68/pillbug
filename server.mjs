@@ -12,10 +12,7 @@ import {
   assertProxyAccess,
   WIKI_ORIGIN_HEADER,
 } from "./wiki-proxy-guard.mjs";
-import {
-  getOAuthAccessToken,
-  handleOAuthHttp,
-} from "./oauth-server.mjs";
+import { getOAuthAccessToken, handleOAuthHttp } from "./oauth-server.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST = path.join(__dirname, "dist");
@@ -86,10 +83,7 @@ async function proxyWiki(req, res) {
     return;
   }
 
-  const target = new URL(
-    `${incoming.pathname}${incoming.search}`,
-    wikiOrigin,
-  );
+  const target = new URL(`${incoming.pathname}${incoming.search}`, wikiOrigin);
 
   const headers = new Headers();
   for (const [key, value] of Object.entries(req.headers)) {

@@ -7,6 +7,7 @@ import {
   loginBusy,
   loginError,
   loggedIn,
+  loggedInAs,
   logout as wikiLogout,
   password,
   username,
@@ -100,17 +101,18 @@ onMounted(() => {
     </label>
 
     <template v-if="authConfigLoaded && oauthEnabled">
-      <div class="panel-actions">
+      <div class="panel-actions oauth-actions">
         <button
-          class="panel-btn"
+          class="panel-btn oauth-primary"
           type="button"
-          :disabled="loggedIn || loginBusy"
+          :disabled="loginBusy || loggedIn"
           @click="startOAuth"
         >
-          OAuth Login
+          <span v-if="!loggedIn">OAuth Login</span>
+          <span v-else>Logged in as {{ loggedInAs || "…" }}</span>
         </button>
         <button
-          class="panel-btn"
+          class="panel-btn oauth-logout"
           type="button"
           :disabled="!loggedIn || loginBusy"
           @click="onLogout"
@@ -194,5 +196,28 @@ onMounted(() => {
 .origin-row .panel-btn {
   flex: none;
   padding: 0 8px;
+}
+
+.oauth-actions .oauth-primary {
+  flex: 3;
+  min-width: 0;
+  text-align: center;
+}
+
+.oauth-actions .oauth-logout {
+  flex: 1;
+  min-width: 0;
+}
+
+.oauth-status {
+  display: flex;
+  align-items: center;
+  height: var(--row-h);
+  padding: 0 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--panel-muted);
+  line-height: 1;
 }
 </style>

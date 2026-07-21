@@ -9,10 +9,7 @@ import {
   isLoginHandshake,
   WIKI_ORIGIN_HEADER,
 } from "../../wiki-proxy-guard.mjs";
-import {
-  getOAuthAccessToken,
-  handleOAuthHttp,
-} from "../../oauth-server.mjs";
+import { getOAuthAccessToken, handleOAuthHttp } from "../../oauth-server.mjs";
 import { DEFAULT_WIKI_ORIGIN } from "./defaults.js";
 
 function originFromRequest(req: IncomingMessage): string | null {
@@ -88,22 +85,22 @@ export function mediawikiProxyPlugin(): Plugin {
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
         try {
-          if (await handleOAuthHttp(req as IncomingMessage, res, { secure: false })) {
+          if (
+            await handleOAuthHttp(req as IncomingMessage, res, {
+              secure: false,
+            })
+          ) {
             return;
           }
         } catch (err) {
           res.statusCode = 500;
           res.setHeader("content-type", "text/plain; charset=utf-8");
-          res.end(
-            `OAuth error: ${err instanceof Error ? err.message : err}`,
-          );
+          res.end(`OAuth error: ${err instanceof Error ? err.message : err}`);
           return;
         }
 
         const url = req.url ?? "";
-        if (
-          !(url.startsWith("/w/api.php") || url.startsWith("/w/rest.php"))
-        ) {
+        if (!(url.startsWith("/w/api.php") || url.startsWith("/w/rest.php"))) {
           next();
           return;
         }

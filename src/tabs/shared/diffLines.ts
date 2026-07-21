@@ -105,7 +105,10 @@ function estimateRowHeight(
     // Soft-wrap estimate; values are usually single logical lines.
     return Math.max(1, Math.ceil(text.length / cols));
   };
-  return Math.max(lineMinHeight, Math.max(wraps(left), wraps(right)) * lineMinHeight);
+  return Math.max(
+    lineMinHeight,
+    Math.max(wraps(left), wraps(right)) * lineMinHeight,
+  );
 }
 
 function diffLines(prev: string, current: string): DiffTuple[] {
