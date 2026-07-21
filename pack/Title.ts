@@ -32,6 +32,53 @@ export const Title: TypeSpec = {
   validate: (value: unknown) => value === null || isWikiTitle(value),
 };
 
+/** Types Assert Title will accept on its input wire (narrowed at runtime). */
+const assertInputTypes = [
+  TITLE_TYPE,
+  "number",
+  "string",
+  "boolean",
+  "vector",
+  "choice",
+] as const;
+
+const selectTitle: NodeSpec = {
+  typeId: "selectTitle",
+  displayName: "Select Title",
+  color: TITLE_COLOR,
+  group: ["logic", "select"],
+  inputs: {
+    condition: { type: "boolean" },
+    ifTrue: { type: TITLE_TYPE },
+    ifFalse: { type: TITLE_TYPE },
+  },
+  outputs: { result: { type: TITLE_TYPE } },
+  execute: (inputs) => ({
+    result: inputs.condition ? inputs.ifTrue : inputs.ifFalse,
+  }),
+};
+
+const assertTitle: NodeSpec = {
+  typeId: "assertTitle",
+  displayName: "Assert Title",
+  color: TITLE_COLOR,
+  group: ["logic", "assert"],
+  inputs: {
+    value: {
+      type: TITLE_TYPE,
+      types: [...assertInputTypes],
+    },
+  },
+  outputs: { result: { type: TITLE_TYPE } },
+  execute: (inputs) => {
+    const value = inputs.value;
+    if (!Title.validate(value)) {
+      throw new Error(`Expected ${Title.label}`);
+    }
+    return { result: value };
+  },
+};
+
 function titleMethodNode(
   typeId: string,
   displayName: string,
@@ -198,6 +245,8 @@ const toText = titleMethodNode(
 );
 
 export const titleNodes: NodeSpecRegistry = {
+  [selectTitle.typeId]: selectTitle,
+  [assertTitle.typeId]: assertTitle,
   [getNamespaceId.typeId]: getNamespaceId,
   [getNamespacePrefix.typeId]: getNamespacePrefix,
   [getMain.typeId]: getMain,
