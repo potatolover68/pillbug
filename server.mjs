@@ -159,6 +159,14 @@ const server = http.createServer(async (req, res) => {
   const pathname = new URL(req.url || "/", `http://${req.headers.host}`)
     .pathname;
 
+  if (pathname === "/healthz") {
+    res.statusCode = 200;
+    res.setHeader("content-type", "text/plain; charset=utf-8");
+    res.setHeader("cache-control", "no-store");
+    res.end("ok");
+    return;
+  }
+
   if (isWikiProxyPath(pathname)) {
     if (req.method === "OPTIONS") {
       res.statusCode = 204;

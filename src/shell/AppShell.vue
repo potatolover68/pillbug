@@ -1,19 +1,14 @@
 <script setup lang="ts">
-import { computed } from "vue";
-
 import Config from "../tabs/config/Config.vue";
 import ConfigSidebar from "../tabs/config/ConfigSidebar.vue";
 import Code from "../tabs/code/Code.vue";
 import CodeSidebar from "../tabs/code/CodeSidebar.vue";
 import Review from "../tabs/review/Review.vue";
 import ReviewSidebar from "../tabs/review/ReviewSidebar.vue";
+import Changelog from "../tabs/changelog/Changelog.vue";
 
 import SidebarShell from "./SidebarShell.vue";
-import { activeTab, sidebarCollapsed } from "./tabs";
-
-const collapsed = computed(
-  () => sidebarCollapsed.value && activeTab.value !== "review",
-);
+import { activeTab, changelogOpen } from "./tabs";
 </script>
 
 <template>
@@ -24,11 +19,13 @@ const collapsed = computed(
       <Review v-else />
     </main>
 
-    <SidebarShell :collapsed="collapsed">
+    <SidebarShell>
       <ConfigSidebar v-if="activeTab === 'config'" />
       <CodeSidebar v-else-if="activeTab === 'code'" />
       <ReviewSidebar v-else />
     </SidebarShell>
+
+    <Changelog v-if="changelogOpen" />
   </div>
 </template>
 

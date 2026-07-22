@@ -7,7 +7,6 @@
   --row-h: 20px;
   --pad: 4px;
   --sidebar-width: 220px;
-  --sidebar-collapsed-width: 36px;
 
   display: flex;
   flex-direction: column;

@@ -17,7 +17,9 @@
     "src/**/*.tsx",
     "src/**/*.vue",
     "src/**/*.d.ts",
-    "package.json"
+    "package.json",
+    "changelogs/**/*.json",
+    "changelogs/**/*.md"
   ],
   "exclude": ["src/wiki/proxy.ts"]
 }

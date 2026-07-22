@@ -31,7 +31,9 @@ self.addEventListener("fetch", (event) => {
   // Never cache the wiki proxy — always hit the live server.
   if (
     url.origin === self.location.origin &&
-    (url.pathname === "/w/api.php" || url.pathname.startsWith("/w/rest.php"))
+    (url.pathname === "/healthz" ||
+      url.pathname === "/w/api.php" ||
+      url.pathname.startsWith("/w/rest.php"))
   ) {
     return;
   }

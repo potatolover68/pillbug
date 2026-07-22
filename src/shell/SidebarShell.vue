@@ -2,22 +2,18 @@
 import {
   TABS,
   activeTab,
-  canCollapseSidebar,
+  changelogOpen,
   setActiveTab,
-  toggleSidebar,
+  toggleChangelog,
   type AppTab,
 } from "./tabs";
 import AboutLinks from "./AboutLinks.vue";
 import ProjectPanel from "./ProjectPanel.vue";
 import "./sidebar.css";
-
-defineProps<{
-  collapsed: boolean;
-}>();
 </script>
 
 <template>
-  <aside class="pillbug-sidebar sidebar-shell" :class="{ collapsed }">
+  <aside class="pillbug-sidebar sidebar-shell">
     <div class="tab-bar">
       <button
         v-for="tab in TABS"
@@ -28,38 +24,31 @@ defineProps<{
         :title="tab.label"
         @click="setActiveTab(tab.id as AppTab)"
       >
-        <span class="tab-label">{{
-          collapsed ? tab.label[0] : tab.label
-        }}</span>
+        <span class="tab-label">{{ tab.label }}</span>
       </button>
       <button
-        class="collapse-btn"
+        class="help-btn"
         type="button"
-        :disabled="!canCollapseSidebar"
-        :title="collapsed ? 'Expand sidebar' : 'Collapse sidebar'"
-        @click="toggleSidebar"
+        title="Changelog"
+        :class="{ active: changelogOpen }"
+        @click="toggleChangelog"
       >
-        {{ collapsed ? "»" : "«" }}
+        ?
       </button>
     </div>
 
-    <div v-show="!collapsed" class="pillbug-sidebar-body">
+    <div class="pillbug-sidebar-body">
       <slot />
     </div>
 
-    <AboutLinks v-show="!collapsed" />
-    <ProjectPanel v-show="!collapsed" />
+    <AboutLinks />
+    <ProjectPanel />
   </aside>
 </template>
 
 <style scoped>
 .sidebar-shell {
   width: var(--sidebar-width);
-  transition: width 0.12s ease;
-}
-
-.sidebar-shell.collapsed {
-  width: var(--sidebar-collapsed-width);
 }
 
 .tab-bar {
@@ -71,13 +60,8 @@ defineProps<{
   flex-shrink: 0;
 }
 
-.sidebar-shell.collapsed .tab-bar {
-  flex-direction: column;
-  align-items: stretch;
-}
-
 .tab-btn,
-.collapse-btn {
+.help-btn {
   height: var(--row-h);
   padding: 0 4px;
   border: none;
@@ -94,7 +78,8 @@ defineProps<{
   min-width: 0;
 }
 
-.tab-btn.active {
+.tab-btn.active,
+.help-btn.active {
   color: #fff;
   outline: 1px solid var(--accent);
   outline-offset: -1px;
@@ -102,19 +87,14 @@ defineProps<{
 }
 
 .tab-btn:hover:not(.active),
-.collapse-btn:hover:not(:disabled) {
+.help-btn:hover:not(.active) {
   background: rgba(255, 255, 255, 0.12);
   color: #fff;
 }
 
-.collapse-btn {
+.help-btn {
   flex: none;
   width: 20px;
-}
-
-.collapse-btn:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
 }
 
 .tab-label {
