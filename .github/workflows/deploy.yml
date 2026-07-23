@@ -2,8 +2,10 @@ name: Deploy
 
 on:
   push:
-    branches:
-      - master
+    tags:
+      - "v*"
+  #    branches:
+  #      - master
   workflow_dispatch:
 
 jobs:
@@ -16,4 +18,4 @@ jobs:
           DEPLOYMENT_TOKEN: ${{ secrets.DEPLOYMENT_TOKEN }}
         run: |
           curl --fail-with-body -X POST \
-            "https://api.svc.toolforge.org/components/v1/tool/pillbug/deployment?token=${DEPLOYMENT_TOKEN}"
+            "https://api.svc.toolforge.org/components/v1/tool/pillbug/deployment?token=${DEPLOYMENT_TOKEN}&force-build=true&force-run=true"

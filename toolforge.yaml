@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://gitlab.wikimedia.org/repos/cloud/toolforge/components-api/-/raw/main/openapi/tool-config-schema.json?ref_type=heads
+config_version: v1beta1
+source_url: https://raw.githubusercontent.com/potatolover68/pillbug/master/toolforge.yaml
+components:
+  backend-service:
+    component_type: continuous
+    build:
+      repository: https://github.com/potatolover68/pillbug.git
+      ref: master
+    run:
+      command: web
+      port: 8000
+      health_check_http: /healthz
