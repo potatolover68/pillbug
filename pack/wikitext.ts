@@ -158,3 +158,53 @@ export function isStubTemplateName(name: string): boolean {
 export function writeTemplateName(name: string): string {
   return templateName(name);
 }
+
+export type WikilinkHit = {
+  raw: string;
+  start: number;
+  end: number;
+  /** Link target as written (no fragment), spaces normalized from underscores. */
+  target: string;
+  fragment: string | null;
+  /** Piped label, or null for bare `[[Target]]`. */
+  label: string | null;
+};
+
+const WIKILINK_RE =
+  /\[\[([^\[\]|\n#]+)(?:#([^\[\]|\n]*))?(?:\|([^\[\]]*))?\]\]/g;
+
+function isSpecialWikilinkTarget(target: string): boolean {
+  return /^(Category|File|Image|Media)\s*:/i.test(target.trim());
+}
+
+/** Free wikilinks only (skips Category/File/Image/Media). */
+export function findWikilinks(content: string): WikilinkHit[] {
+  const hits: WikilinkHit[] = [];
+  for (const match of content.matchAll(WIKILINK_RE)) {
+    const target = match[1]!.replace(/_/g, " ").trim();
+    if (!target || isSpecialWikilinkTarget(target)) continue;
+    const fragmentRaw = match[2];
+    const fragment =
+      fragmentRaw != null && fragmentRaw.length > 0 ? fragmentRaw : null;
+    const label = match[3] != null ? match[3] : null;
+    hits.push({
+      raw: match[0]!,
+      start: match.index!,
+      end: match.index! + match[0]!.length,
+      target,
+      fragment,
+      label,
+    });
+  }
+  return hits;
+}
+
+export function formatWikilink(
+  target: string,
+  fragment: string | null,
+  label: string | null,
+): string {
+  const frag = fragment ? `#${fragment}` : "";
+  if (label == null) return `[[${target}${frag}]]`;
+  return `[[${target}${frag}|${label}]]`;
+}

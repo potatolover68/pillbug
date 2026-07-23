@@ -88,8 +88,51 @@ export function applyWikiOrigin(raw: string): void {
 }
 
 function isAlreadyLoggedInError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  return /already logged in/i.test(message);
+  const msg = error instanceof Error ? error.message : String(error);
+  return /already\s+logged\s+in/i.test(msg);
+}
+
+function isEnWikipediaOrigin(): boolean {
+  try {
+    return (
+      new URL(normalizedWikiOrigin()).hostname.toLowerCase() ===
+      "en.wikipedia.org"
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isCheckPageDeniedError(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error);
+  if (
+    msg.includes("CheckPageJSON") ||
+    msg.includes("Not approved for en.wikipedia.org")
+  ) {
+    return true;
+  }
+  // m3api surfaces proxy denials as status-only errors.
+  return isEnWikipediaOrigin() && /non-200 HTTP status code: 403\b/.test(msg);
+}
+
+function alertCheckPageDenied(): void {
+  window.alert(
+    "You do not have AutoWikiBrowser permissions on English Wikipedia.\n\n" +
+      "Please request access at Wikipedia:Requests for permissions/AutoWikiBrowser",
+  );
+}
+
+/** Drop local session and clear any OAuth cookie so restore does not loop. */
+async function hardClearSession(): Promise<void> {
+  clearSession();
+  try {
+    await fetch("/api/oauth/logout", {
+      method: "POST",
+      credentials: "include",
+    });
+  } catch {
+    /* BotPassword-only deployments may not expose this route. */
+  }
 }
 
 function assertNamedAccount(
@@ -221,8 +264,13 @@ export async function restoreSession(): Promise<void> {
   loginError.value = null;
   try {
     await attachSession(username.value.trim() || undefined);
-  } catch {
-    clearSession();
+  } catch (error) {
+    if (isCheckPageDeniedError(error)) {
+      await hardClearSession();
+      alertCheckPageDenied();
+    } else {
+      clearSession();
+    }
   }
 }
 
@@ -261,8 +309,11 @@ export async function login(): Promise<void> {
       }
     }
   } catch (error) {
-    clearSession();
+    await hardClearSession();
     loginError.value = error instanceof Error ? error.message : String(error);
+    if (isCheckPageDeniedError(error)) {
+      alertCheckPageDenied();
+    }
   } finally {
     password.value = "";
     loginBusy.value = false;

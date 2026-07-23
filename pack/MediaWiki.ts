@@ -6,6 +6,8 @@ import {
   contentHasTemplate,
   findCategories,
   findTemplates,
+  findWikilinks,
+  formatWikilink,
   isStubTemplateName,
   renameFirstLevelParams,
   writeTemplateName,
@@ -111,6 +113,116 @@ function removeCategoryFromContent(content: string, category: unknown): string {
   );
   out = out.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n");
   return out;
+}
+
+/** Rewrite [[Category:from…]] → [[Category:to…]], keeping sort keys; drop duplicate `to`. */
+function replaceCategoryInContent(
+  content: string,
+  from: unknown,
+  to: unknown,
+): string {
+  const fromName = normName(categoryName(from));
+  const toName = categoryName(to);
+  if (!fromName || !toName) return content;
+  if (fromName === normName(toName)) return content;
+
+  const hits = findCategories(content).filter(
+    (c) => normName(c.name) === fromName,
+  );
+  if (hits.length === 0) return content;
+
+  let out = replaceSpans(
+    content,
+    hits.map((h) => {
+      const sortMatch = /\|([^\]]*)\]\]\s*$/.exec(h.raw);
+      const sortPart = sortMatch ? `|${sortMatch[1]}` : "";
+      return {
+        start: h.start,
+        end: h.end,
+        text: `[[Category:${toName}${sortPart}]]`,
+      };
+    }),
+  );
+
+  const toHits = findCategories(out).filter(
+    (c) => normName(c.name) === normName(toName),
+  );
+  if (toHits.length > 1) {
+    out = replaceSpans(
+      out,
+      toHits.slice(1).map((h) => ({ start: h.start, end: h.end, text: "" })),
+    );
+    out = out.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n");
+  }
+  return out;
+}
+
+function linkTargetName(value: unknown): string {
+  return asString(value).replace(/_/g, " ").trim();
+}
+
+/**
+ * Retarget free wikilinks from → to.
+ * replaceOn false: [[Foo]]→[[Baz|Foo]], [[Foo|Bar]]→[[Baz|Bar]]
+ * replaceOn true:  [[Foo]]→[[Baz]],     [[Foo|Bar]]→[[Baz|Bar]]
+ */
+function retargetWikilinksInContent(
+  content: string,
+  from: unknown,
+  to: unknown,
+  replaceOn: boolean,
+): string {
+  const want = normName(linkTargetName(from));
+  const next = linkTargetName(to);
+  if (!want || !next) return content;
+
+  const hits = findWikilinks(content).filter(
+    (h) => normName(h.target) === want,
+  );
+  if (hits.length === 0) return content;
+
+  return replaceSpans(
+    content,
+    hits.map((h) => {
+      let label = h.label;
+      if (label == null && !replaceOn) {
+        label = h.target;
+      } else if (label == null && replaceOn) {
+        label = null;
+      }
+      // If replaceOn and label equals new target, drop the pipe.
+      if (
+        replaceOn &&
+        label != null &&
+        normName(label) === normName(next)
+      ) {
+        label = null;
+      }
+      return {
+        start: h.start,
+        end: h.end,
+        text: formatWikilink(next, h.fragment, label),
+      };
+    }),
+  );
+}
+
+/** Turn [[Foo]] / [[Foo|Bar]] into Foo / Bar (skips Category/File links). */
+function unlinkWikilinksInContent(content: string, target: unknown): string {
+  const want = normName(linkTargetName(target));
+  if (!want) return content;
+  const hits = findWikilinks(content).filter(
+    (h) => normName(h.target) === want,
+  );
+  if (hits.length === 0) return content;
+  return replaceSpans(
+    content,
+    hits.map((h) => ({
+      start: h.start,
+      end: h.end,
+      text: h.label != null ? h.label : h.target,
+    })),
+  );
 }
 
 type LeadKind =
@@ -543,7 +655,7 @@ const addCategory: NodeSpec = {
   typeId: "mwn/add-category",
   displayName: "Add Category",
   description:
-    "Append [[Category:…]] if missing (before stub templates when present).",
+    "Append [[Category:…]] only if that category is not already present (before stub templates when present).",
   color: MW_COLOR,
   group: GROUP,
   inputs: {
@@ -582,6 +694,78 @@ const removeCategory: NodeSpec = {
   }),
 };
 
+const replaceCategory: NodeSpec = {
+  typeId: "mwn/replace-category",
+  displayName: "Replace Category",
+  description:
+    "Replace [[Category:from]] with [[Category:to]] (keeps sort keys; dedupes target).",
+  color: MW_COLOR,
+  group: GROUP,
+  inputs: {
+    content: { type: "string" },
+    from: titleOrString,
+    to: titleOrString,
+  },
+  outputs: {
+    content: { type: "string" },
+  },
+  execute: (inputs) => ({
+    content: replaceCategoryInContent(
+      requireContent(inputs.content),
+      inputs.from,
+      inputs.to,
+    ),
+  }),
+};
+
+const retargetWikilink: NodeSpec = {
+  typeId: "mwn/retarget-wikilink",
+  displayName: "Retarget Wikilink",
+  description:
+    "Change free wikilink targets. Off: [[Foo]]→[[Baz|Foo]]. On (replace on): [[Foo]]→[[Baz]]. Piped labels are kept. Skips Category/File links.",
+  color: MW_COLOR,
+  group: GROUP,
+  inputs: {
+    content: { type: "string" },
+    from: titleOrString,
+    to: titleOrString,
+    replaceOn: { type: "boolean", defaultValue: false },
+  },
+  outputs: {
+    content: { type: "string" },
+  },
+  execute: (inputs) => ({
+    content: retargetWikilinksInContent(
+      requireContent(inputs.content),
+      inputs.from,
+      inputs.to,
+      Boolean(inputs.replaceOn),
+    ),
+  }),
+};
+
+const unlinkWikilink: NodeSpec = {
+  typeId: "mwn/unlink-wikilink",
+  displayName: "Unlink Wikilink",
+  description:
+    "Replace matching free wikilinks with their visible text ([[Foo]]→Foo, [[Foo|Bar]]→Bar). Skips Category/File links.",
+  color: MW_COLOR,
+  group: GROUP,
+  inputs: {
+    content: { type: "string" },
+    target: titleOrString,
+  },
+  outputs: {
+    content: { type: "string" },
+  },
+  execute: (inputs) => ({
+    content: unlinkWikilinksInContent(
+      requireContent(inputs.content),
+      inputs.target,
+    ),
+  }),
+};
+
 const orderArticleNode: NodeSpec = {
   typeId: "mwn/order-article",
   displayName: "Order Article",
@@ -608,5 +792,8 @@ export const mediaWikiNodes: NodeSpecRegistry = {
   [renameTemplateParam.typeId]: renameTemplateParam,
   [addCategory.typeId]: addCategory,
   [removeCategory.typeId]: removeCategory,
+  [replaceCategory.typeId]: replaceCategory,
+  [retargetWikilink.typeId]: retargetWikilink,
+  [unlinkWikilink.typeId]: unlinkWikilink,
   [orderArticleNode.typeId]: orderArticleNode,
 };
