@@ -49,6 +49,24 @@ export function oauthMwOrigin() {
   }
 }
 
+/** True if Cookie header looks like a MediaWiki session (not only pillbug_sid). */
+export function hasLikelyWikiSessionCookie(cookieHeader) {
+  if (!cookieHeader || typeof cookieHeader !== "string") return false;
+  for (const part of cookieHeader.split(";")) {
+    const name = part.trim().split("=")[0];
+    if (!name || name === OAUTH_COOKIE) continue;
+    if (
+      /session/i.test(name) ||
+      /^ss0_/i.test(name) ||
+      /centralauth/i.test(name) ||
+      /UserID|UserName|Token/i.test(name)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function authConfigPayload() {
   return { oauth: oauthEnabled() };
 }
@@ -220,6 +238,22 @@ export async function handleOAuthHttp(req, res, opts = {}) {
     res.setHeader("content-type", "application/json; charset=utf-8");
     res.setHeader("cache-control", "no-store");
     res.end(JSON.stringify(authConfigPayload()));
+    return true;
+  }
+
+  if (pathname === "/api/auth/status" && req.method === "GET") {
+    let canRestore = hasLikelyWikiSessionCookie(req.headers.cookie);
+    if (!canRestore && oauthEnabled()) {
+      try {
+        canRestore = Boolean(await getOAuthAccessToken(req));
+      } catch {
+        canRestore = false;
+      }
+    }
+    res.statusCode = 200;
+    res.setHeader("content-type", "application/json; charset=utf-8");
+    res.setHeader("cache-control", "no-store");
+    res.end(JSON.stringify({ canRestore }));
     return true;
   }
 

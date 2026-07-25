@@ -263,6 +263,16 @@ export async function loadWikiConfig(): Promise<void> {
 export async function restoreSession(): Promise<void> {
   loginError.value = null;
   try {
+    const statusRes = await fetch("/api/auth/status", {
+      credentials: "include",
+    });
+    if (!statusRes.ok) return;
+    const status = (await statusRes.json()) as { canRestore?: boolean };
+    if (!status.canRestore) return;
+  } catch {
+    return;
+  }
+  try {
     await attachSession(username.value.trim() || undefined);
   } catch (error) {
     if (isCheckPageDeniedError(error)) {

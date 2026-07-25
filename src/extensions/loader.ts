@@ -1,5 +1,10 @@
 import { reactive } from "vue";
-import { importGraph, serializeDocument, type NodeMap } from "@nodish/core";
+import {
+  importGraph,
+  serializeDocument,
+  type NodeMap,
+  type NodePack,
+} from "@nodish/core";
 import { pack as basePack } from "@nodish/base";
 import { pack as mwnPack } from "../../pack/index";
 
@@ -11,8 +16,20 @@ import {
 } from "../tabs/code/state";
 import { getEnabledExtensions, importPackModule } from "./store";
 
+/** Drop Select/Assert logic nodes from a pack (base ships one per scalar type). */
+function withoutSelectAssert(pack: NodePack): NodePack {
+  if (!pack.nodeTypes) return pack;
+  const nodeTypes = Object.fromEntries(
+    Object.entries(pack.nodeTypes).filter(
+      ([, node]) =>
+        !node.group?.includes("select") && !node.group?.includes("assert"),
+    ),
+  );
+  return { ...pack, nodeTypes };
+}
+
 function loadBuiltin(target: NodeMap): void {
-  const baseErrors = target.loadPack(basePack);
+  const baseErrors = target.loadPack(withoutSelectAssert(basePack));
   if (baseErrors.length > 0) {
     throw new Error(`Failed to load built-in pack: ${baseErrors.join(", ")}`);
   }
