@@ -13,7 +13,7 @@ export function isWikiTitle(value: unknown): value is WikiTitle {
 export function asString(value: unknown): string {
   if (typeof value === "string") return value;
   if (isWikiTitle(value)) return value.getPrefixedText();
-  throw new Error("Expected string or mwn/title");
+  throw new Error("Expected string or wiki/title");
 }
 
 function stripNs(name: string, ns: string): string {

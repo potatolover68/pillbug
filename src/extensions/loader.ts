@@ -6,7 +6,7 @@ import {
   type NodePack,
 } from "@nodish/core";
 import { pack as basePack } from "@nodish/base";
-import { pack as mwnPack } from "../../pack/index";
+import { pack as wikiPack } from "../../pack/index";
 
 import { createProcessMap, createSkipMap } from "../nodish/createAppNodeMap";
 import { map, skipMap } from "../tabs/shared";
@@ -33,9 +33,9 @@ function loadBuiltin(target: NodeMap): void {
   if (baseErrors.length > 0) {
     throw new Error(`Failed to load built-in pack: ${baseErrors.join(", ")}`);
   }
-  const mwnErrors = target.loadPack(mwnPack);
-  if (mwnErrors.length > 0) {
-    throw new Error(`Failed to load mwn pack: ${mwnErrors.join(", ")}`);
+  const wikiErrors = target.loadPack(wikiPack);
+  if (wikiErrors.length > 0) {
+    throw new Error(`Failed to load wiki pack: ${wikiErrors.join(", ")}`);
   }
 }
 

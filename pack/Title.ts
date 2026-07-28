@@ -1,7 +1,7 @@
 import type { WikiTitle } from "../src/wiki/title.ts";
 import type { NodeSpec, NodeSpecRegistry, TypeSpec } from "@nodish/core";
 
-const TITLE_TYPE = "mwn/title";
+const TITLE_TYPE = "wiki/title";
 const TITLE_COLOR = "#eb9e34";
 
 function isWikiTitle(value: unknown): value is WikiTitle {
@@ -15,7 +15,7 @@ function isWikiTitle(value: unknown): value is WikiTitle {
 
 function asTitle(value: unknown): WikiTitle {
   if (!isWikiTitle(value)) {
-    throw new Error("Expected mwn/title");
+    throw new Error("Expected wiki/title");
   }
   return value;
 }
@@ -45,7 +45,7 @@ function titleMethodNode(
     displayName,
     description,
     color: TITLE_COLOR,
-    group: ["Title"],
+    group: ["MediaWiki", "title"],
     inputs: {
       title: {
         type: TITLE_TYPE,
@@ -63,7 +63,7 @@ function titleMethodNode(
 }
 
 const getNamespaceId = titleMethodNode(
-  "mwn/get-namespace-id",
+  "wiki/get-namespace-id",
   "Get Namespace ID",
   "Get the namespace number (e.g. 6 for File:Example.svg).",
   "namespaceId",
@@ -72,7 +72,7 @@ const getNamespaceId = titleMethodNode(
 );
 
 const getNamespacePrefix = titleMethodNode(
-  "mwn/get-namespace-prefix",
+  "wiki/get-namespace-prefix",
   "Get Namespace Prefix",
   'Get the namespace prefix in the content language (e.g. "File:").',
   "namespacePrefix",
@@ -81,7 +81,7 @@ const getNamespacePrefix = titleMethodNode(
 );
 
 const getMain = titleMethodNode(
-  "mwn/get-main",
+  "wiki/get-main",
   "Get Main",
   'Get the main page name (e.g. "Example_image.svg").',
   "main",
@@ -90,7 +90,7 @@ const getMain = titleMethodNode(
 );
 
 const getMainText = titleMethodNode(
-  "mwn/get-main-text",
+  "wiki/get-main-text",
   "Get Main Text",
   'Get the main page name with spaces (e.g. "Example image.svg").',
   "mainText",
@@ -99,7 +99,7 @@ const getMainText = titleMethodNode(
 );
 
 const getPrefixedDb = titleMethodNode(
-  "mwn/get-prefixed-db",
+  "wiki/get-prefixed-db",
   "Get Prefixed DB",
   'Get the full page name for API use (e.g. "File:Example_image.svg").',
   "prefixedDb",
@@ -108,7 +108,7 @@ const getPrefixedDb = titleMethodNode(
 );
 
 const getPrefixedText = titleMethodNode(
-  "mwn/get-prefixed-text",
+  "wiki/get-prefixed-text",
   "Get Prefixed Text",
   'Get the full display title (e.g. "File:Example image.svg").',
   "prefixedText",
@@ -117,7 +117,7 @@ const getPrefixedText = titleMethodNode(
 );
 
 const getFragment = titleMethodNode(
-  "mwn/get-fragment",
+  "wiki/get-fragment",
   "Get Fragment",
   "Get the fragment without the hash character, or null if none.",
   "fragment",
@@ -126,7 +126,7 @@ const getFragment = titleMethodNode(
 );
 
 const isTalkPage = titleMethodNode(
-  "mwn/is-talk-page",
+  "wiki/is-talk-page",
   "Is Talk Page",
   "Check if the title is in a talk namespace.",
   "isTalkPage",
@@ -135,7 +135,7 @@ const isTalkPage = titleMethodNode(
 );
 
 const getTalkPage = titleMethodNode(
-  "mwn/get-talk-page",
+  "wiki/get-talk-page",
   "Get Talk Page",
   "Get the associated talk page title, or null if unavailable.",
   "talkPage",
@@ -144,7 +144,7 @@ const getTalkPage = titleMethodNode(
 );
 
 const getSubjectPage = titleMethodNode(
-  "mwn/get-subject-page",
+  "wiki/get-subject-page",
   "Get Subject Page",
   "Get the subject page for a talk page, or null if unavailable.",
   "subjectPage",
@@ -153,7 +153,7 @@ const getSubjectPage = titleMethodNode(
 );
 
 const canHaveTalkPage = titleMethodNode(
-  "mwn/can-have-talk-page",
+  "wiki/can-have-talk-page",
   "Can Have Talk Page",
   "Check if the title can have an associated talk page.",
   "canHaveTalkPage",
@@ -162,7 +162,7 @@ const canHaveTalkPage = titleMethodNode(
 );
 
 const getExtension = titleMethodNode(
-  "mwn/get-extension",
+  "wiki/get-extension",
   "Get Extension",
   "Get the page name extension, or null if none.",
   "extension",
@@ -171,7 +171,7 @@ const getExtension = titleMethodNode(
 );
 
 const getDotExtension = titleMethodNode(
-  "mwn/get-dot-extension",
+  "wiki/get-dot-extension",
   "Get Dot Extension",
   'Get the extension with a leading dot (e.g. ".json"), or "" if none.',
   "dotExtension",
@@ -180,7 +180,7 @@ const getDotExtension = titleMethodNode(
 );
 
 const toString = titleMethodNode(
-  "mwn/title-to-string",
+  "wiki/title-to-string",
   "Title To String",
   "Alias for getPrefixedDb.",
   "string",
@@ -189,7 +189,7 @@ const toString = titleMethodNode(
 );
 
 const toText = titleMethodNode(
-  "mwn/title-to-text",
+  "wiki/title-to-text",
   "Title To Text",
   "Alias for getPrefixedText.",
   "text",

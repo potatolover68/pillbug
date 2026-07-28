@@ -7,7 +7,7 @@ import {
 
 const processGraphInterface: GraphInterface = {
   parameters: {
-    Title: { type: "mwn/title" },
+    Title: { type: "wiki/title" },
     Content: { type: "string" },
   },
   returns: {
@@ -17,7 +17,7 @@ const processGraphInterface: GraphInterface = {
 
 const skipGraphInterface: GraphInterface = {
   parameters: {
-    Title: { type: "mwn/title" },
+    Title: { type: "wiki/title" },
     Content: { type: "string" },
   },
   returns: {

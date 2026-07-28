@@ -91,15 +91,6 @@ function setGraph(kind: CodeGraphKind): void {
       </button>
     </div>
 
-    <p class="panel-muted">
-      <template v-if="activeCodeGraph === 'process'">
-        Transforms page text: Title + Content → ContentAfter
-      </template>
-      <template v-else>
-        Predicate: Title + Content → Skip (true aborts process)
-      </template>
-    </p>
-
     <label class="panel-field">
       <span class="panel-label">Test page</span>
       <input
