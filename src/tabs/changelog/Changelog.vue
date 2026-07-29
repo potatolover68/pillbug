@@ -32,7 +32,9 @@ function onBackdrop(event: MouseEvent): void {
         </button>
       </header>
       <div class="changelog-scroll">
-        <p v-if="entries.length === 0" class="empty">No changelog entries yet.</p>
+        <p v-if="entries.length === 0" class="empty">
+          No changelog entries yet.
+        </p>
         <template v-else>
           <section
             v-for="(entry, index) in entries"

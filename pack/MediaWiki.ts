@@ -33,6 +33,7 @@ import {
   writeTemplateName,
   type Template,
 } from "./wikitext.ts";
+import { applyAwbTypos } from "./typos.ts";
 
 const MW_COLOR = "#3d8bfd";
 const GROUP_FIND = ["MediaWiki", "templates", "find"];
@@ -43,6 +44,7 @@ const GROUP_CATEGORIES = ["MediaWiki", "categories"];
 const GROUP_WIKILINKS = ["MediaWiki", "wikilinks"];
 const GROUP_TITLE = ["MediaWiki", "title"];
 const GROUP_PAGE = ["MediaWiki", "page"];
+const GROUP_TEXT = ["MediaWiki", "text"];
 
 const titleOrString: GraphPortSpec = {
   type: "string" as const,
@@ -135,7 +137,9 @@ function renameTemplateParamInContent(
 
 function asContentOrTemplates(
   value: unknown,
-): { kind: "content"; content: string } | { kind: "templates"; templates: Template[] } {
+):
+  | { kind: "content"; content: string }
+  | { kind: "templates"; templates: Template[] } {
   if (typeof value === "string") return { kind: "content", content: value };
   if (isTemplates(value)) return { kind: "templates", templates: value };
   throw new Error("Expected string content or wiki/templates");
@@ -246,11 +250,7 @@ function retargetWikilinksInContent(
         label = null;
       }
       // If replaceOn and label equals new target, drop the pipe.
-      if (
-        replaceOn &&
-        label != null &&
-        normName(label) === normName(next)
-      ) {
+      if (replaceOn && label != null && normName(label) === normName(next)) {
         label = null;
       }
       return {
@@ -863,7 +863,8 @@ const orderArticleNode: NodeSpec = {
 const parseTemplates: NodeSpec = {
   typeId: "wiki/parse-templates",
   displayName: "Parse Templates From Content",
-  description: "Parse all top-level {{…}} invocations in wikitext into a Templates collection.",
+  description:
+    "Parse all top-level {{…}} invocations in wikitext into a Templates collection.",
   color: MW_COLOR,
   group: GROUP_FIND,
   inputs: {
@@ -913,7 +914,10 @@ const filterTemplatesByNameNode: NodeSpec = {
     result: { type: TEMPLATES_TYPE },
   },
   execute: (inputs) => ({
-    result: filterTemplatesByName(requireTemplates(inputs.templates), inputs.name),
+    result: filterTemplatesByName(
+      requireTemplates(inputs.templates),
+      inputs.name,
+    ),
   }),
 };
 
@@ -943,7 +947,8 @@ const sliceTemplatesNode: NodeSpec = {
 const getNthTemplateNode: NodeSpec = {
   typeId: "wiki/get-nth-template",
   displayName: "Get Nth Template",
-  description: "1-based: return a Templates collection with only the nth item (empty if out of range).",
+  description:
+    "1-based: return a Templates collection with only the nth item (empty if out of range).",
   color: MW_COLOR,
   group: GROUP_COLLECTION,
   inputs: {
@@ -954,7 +959,10 @@ const getNthTemplateNode: NodeSpec = {
     result: { type: TEMPLATES_TYPE },
   },
   execute: (inputs) => ({
-    result: getNthTemplate(requireTemplates(inputs.templates), Number(inputs.n)),
+    result: getNthTemplate(
+      requireTemplates(inputs.templates),
+      Number(inputs.n),
+    ),
   }),
 };
 
@@ -1018,7 +1026,7 @@ const getParameter: NodeSpec = {
   typeId: "wiki/get-parameter",
   displayName: "Get Parameter",
   description:
-    "Parameter value from the sole template (named key or positional \"1\"). Errors if Templates is not length 1. Missing → empty string.",
+    'Parameter value from the sole template (named key or positional "1"). Errors if Templates is not length 1. Missing → empty string.',
   color: MW_COLOR,
   group: GROUP_PARAMS,
   inputs: {
@@ -1089,7 +1097,8 @@ const setParameter: NodeSpec = {
 const hasParameter: NodeSpec = {
   typeId: "wiki/has-parameter",
   displayName: "Has Parameter",
-  description: "True if any template in the collection has the given parameter.",
+  description:
+    "True if any template in the collection has the given parameter.",
   color: MW_COLOR,
   group: GROUP_PARAMS,
   inputs: {
@@ -1152,6 +1161,24 @@ const deleteTemplatesFromContent: NodeSpec = {
   }),
 };
 
+const regexTypoFixing: NodeSpec = {
+  typeId: "wiki/regex-typo-fixing",
+  displayName: "RegEx Typo Fixing",
+  description:
+    "Apply enwiki AutoWikiBrowser Typo rules (Wikipedia:AutoWikiBrowser/Typos), loaded once at app start.",
+  color: MW_COLOR,
+  group: GROUP_TEXT,
+  inputs: {
+    content: { type: "string" },
+  },
+  outputs: {
+    content: { type: "string" },
+  },
+  execute: (inputs) => ({
+    content: applyAwbTypos(requireContent(inputs.content)),
+  }),
+};
+
 export const mediaWikiNodes: NodeSpecRegistry = {
   [stringToTitle.typeId]: stringToTitle,
   [inCategory.typeId]: inCategory,
@@ -1178,4 +1205,5 @@ export const mediaWikiNodes: NodeSpecRegistry = {
   [hasParameter.typeId]: hasParameter,
   [applyTemplates.typeId]: applyTemplates,
   [deleteTemplatesFromContent.typeId]: deleteTemplatesFromContent,
+  [regexTypoFixing.typeId]: regexTypoFixing,
 };

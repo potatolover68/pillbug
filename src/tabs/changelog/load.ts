@@ -28,7 +28,10 @@ function mdForVersion(version: string): string | null {
   return null;
 }
 
-function compareNewestFirst(a: ChangelogIndexEntry, b: ChangelogIndexEntry): number {
+function compareNewestFirst(
+  a: ChangelogIndexEntry,
+  b: ChangelogIndexEntry,
+): number {
   const byDate = b.date.localeCompare(a.date);
   if (byDate !== 0) return byDate;
   return b.version.localeCompare(a.version, undefined, { numeric: true });

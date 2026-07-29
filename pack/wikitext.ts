@@ -271,17 +271,11 @@ export function sliceTemplates(
   return templates.slice(start - 1, end);
 }
 
-export function getNthTemplate(
-  templates: Template[],
-  n: number,
-): Template[] {
+export function getNthTemplate(templates: Template[], n: number): Template[] {
   return sliceTemplates(templates, n, n);
 }
 
-export function joinTemplates(
-  a: Template[],
-  b: Template[],
-): Template[] {
+export function joinTemplates(a: Template[], b: Template[]): Template[] {
   return [...a, ...b];
 }
 
