@@ -18,6 +18,7 @@ export type WikiUserInfo = {
   name?: string;
   anon?: boolean;
   temp?: boolean;
+  groups?: string[];
 };
 
 type RestPage = {
@@ -112,7 +113,7 @@ export class WikiClient {
       {
         action: "query",
         meta: set("userinfo"),
-        uiprop: set("blockinfo"),
+        uiprop: set("blockinfo", "groups"),
       },
       { method: "GET" },
     )) as { query?: { userinfo?: WikiUserInfo } };
@@ -175,6 +176,7 @@ export class WikiClient {
     text: string,
     summary = "",
     minor = false,
+    bot = false,
   ): Promise<EditResult> {
     const session = this.syncContext();
     const data = (await session.request(
@@ -183,7 +185,7 @@ export class WikiClient {
         title,
         text,
         summary,
-        bot: true,
+        ...(bot ? { bot: true } : {}),
         ...(minor ? { minor: true } : { notminor: true }),
       },
       { method: "POST", tokenType: "csrf" },
@@ -193,6 +195,32 @@ export class WikiClient {
       throw new Error("Edit returned no result");
     }
     return edit;
+  }
+
+  /**
+   * Render wikitext to HTML via action=parse (preview mode + pre-save transform).
+   * `title` sets the parse context ({{PAGENAME}}, etc.).
+   */
+  async parsePreview(text: string, title: string): Promise<string> {
+    const session = this.syncContext();
+    const data = (await session.request(
+      {
+        action: "parse",
+        text,
+        title,
+        contentmodel: "wikitext",
+        prop: set("text"),
+        preview: true,
+        pst: true,
+        disablelimitreport: true,
+        disableeditsection: true,
+      },
+      { method: "POST" },
+    )) as { parse?: { text?: string | { ["*"]: string } } };
+    const raw = data.parse?.text;
+    if (typeof raw === "string") return raw;
+    if (raw && typeof raw["*"] === "string") return raw["*"];
+    throw new Error("Parse returned no HTML");
   }
 
   /** Expose synced m3api session for list queries. */

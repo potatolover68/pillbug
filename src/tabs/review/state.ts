@@ -1,5 +1,5 @@
-import { computed, ref } from "vue";
-import { loggedIn, savePage } from "../../wiki/session";
+import { computed, ref, watch } from "vue";
+import { hasBotGroup, loggedIn, previewWikitext, savePage } from "../../wiki/session";
 import { pageQueue, removeFromQueue } from "../../wiki/queue";
 import {
   configurePrefetchHooks,
@@ -23,6 +23,8 @@ interface ReviewLogEntry {
 export const editSummary = ref("");
 /** When true, saves are marked minor on the wiki. */
 export const markMinor = ref(false);
+/** When true (bot accounts only), auto-save reviews and disable Save/Skip/Edit. */
+export const botMode = ref(false);
 export const reviewLogs = ref<ReviewLogEntry[]>([]);
 const currentPage = ref<string | null>(null);
 export const currentBefore = ref("");
@@ -38,10 +40,17 @@ export const manualEditing = ref(false);
 /** ContentAfter when the current manual-edit session began; used for one-step Skip restore. */
 const preManualAfter = ref<string | null>(null);
 
+/** Main pane shows MediaWiki HTML preview of ContentAfter. */
+export const previewing = ref(false);
+export const previewHtml = ref("");
+export const previewBusy = ref(false);
+export const previewError = ref<string | null>(null);
+
 /** Aborted on Stop so in-flight takeNextPrepared exits promptly. */
 let batchAbort: AbortController | null = null;
 
 export const canSkip = computed(() => {
+  if (botMode.value) return false;
   if (currentPage.value === null) return false;
   const canRestore =
     preManualAfter.value !== null &&
@@ -51,11 +60,24 @@ export const canSkip = computed(() => {
   return true;
 });
 
-export const canManualEdit = computed(() => currentPage.value !== null);
+export const canManualEdit = computed(
+  () => !botMode.value && currentPage.value !== null,
+);
+
+export const canPreview = computed(
+  () => loggedIn.value && currentPage.value !== null && !previewBusy.value,
+);
 
 function clearManualEditState(): void {
   manualEditing.value = false;
   preManualAfter.value = null;
+}
+
+function clearPreviewState(): void {
+  previewing.value = false;
+  previewHtml.value = "";
+  previewBusy.value = false;
+  previewError.value = null;
 }
 
 export function toggleManualEdit(): void {
@@ -70,10 +92,38 @@ export function toggleManualEdit(): void {
     }
     return;
   }
+  clearPreviewState();
   if (preManualAfter.value === null) {
     preManualAfter.value = currentAfter.value;
   }
   manualEditing.value = true;
+}
+
+export async function togglePreview(): Promise<void> {
+  if (previewing.value) {
+    clearPreviewState();
+    return;
+  }
+  if (!canPreview.value) return;
+
+  const page = currentPage.value;
+  if (!page) return;
+
+  clearManualEditState();
+  previewing.value = true;
+  previewBusy.value = true;
+  previewError.value = null;
+  previewHtml.value = "";
+
+  try {
+    previewHtml.value = await previewWikitext(currentAfter.value, page);
+  } catch (error) {
+    previewError.value =
+      error instanceof Error ? error.message : String(error);
+    previewing.value = false;
+  } finally {
+    previewBusy.value = false;
+  }
 }
 
 const selectedEntry = computed(() =>
@@ -99,6 +149,7 @@ const canAct = computed(
 );
 
 export const canPrimaryAction = computed(() => {
+  if (botMode.value) return false;
   if (saveBusy.value) return false;
   if (primaryAction.value === "undo") {
     const entry = selectedEntry.value;
@@ -108,6 +159,28 @@ export const canPrimaryAction = computed(() => {
   }
   return canAct.value && loggedIn.value;
 });
+
+watch(hasBotGroup, (hasBot) => {
+  if (!hasBot) botMode.value = false;
+});
+
+function maybeAutoSave(): void {
+  if (!botMode.value || saveBusy.value || !loggedIn.value || !canAct.value) {
+    return;
+  }
+  // Log-view undo path is disabled in bot mode; only live saves.
+  if (selectedLogId.value !== null) return;
+  void applyCurrent();
+}
+
+watch(botMode, (on) => {
+  if (on) {
+    clearManualEditState();
+    clearPreviewState();
+    maybeAutoSave();
+  }
+});
+
 configurePrefetchHooks({
   onAutoSkip(entry) {
     appendLogEntry(entry);
@@ -157,13 +230,16 @@ function setCurrentReview(page: string, before: string, after: string): void {
   selectedLogId.value = null;
   liveReview = null;
   clearManualEditState();
+  clearPreviewState();
   saveError.value = null;
+  maybeAutoSave();
 }
 
 export function clearLogSelection(): void {
   selectedLogId.value = null;
   saveError.value = null;
   clearManualEditState();
+  clearPreviewState();
   if (liveReview) {
     currentPage.value = liveReview.page;
     currentBefore.value = liveReview.before;
@@ -194,6 +270,7 @@ export function selectLogEntry(id: string): void {
   }
 
   clearManualEditState();
+  clearPreviewState();
   selectedLogId.value = id;
   currentPage.value = entry.page;
   currentBefore.value = entry.before;
@@ -223,17 +300,21 @@ export async function applyCurrent(): Promise<void> {
       currentAfter.value,
       editSummary.value,
       markMinor.value,
+      botMode.value,
     );
     clearManualEditState();
+    clearPreviewState();
     markApplied(page);
     dequeueCurrent(pageQueue.value[0] ?? null, page);
-    if (batchRunning.value) {
-      await processNextInQueue();
-    }
   } catch (error) {
     saveError.value = error instanceof Error ? error.message : String(error);
   } finally {
     saveBusy.value = false;
+  }
+
+  // After clearing saveBusy so bot-mode auto-save on the next review can run.
+  if (!saveError.value && batchRunning.value) {
+    await processNextInQueue();
   }
 }
 
@@ -251,7 +332,7 @@ export async function undoCurrent(): Promise<void> {
     const summary = editSummary.value.trim()
       ? `Undid: ${editSummary.value.trim()}`
       : "Undid previous edit";
-    await savePage(entry.page, entry.before, summary, markMinor.value);
+    await savePage(entry.page, entry.before, summary, markMinor.value, botMode.value);
     entry.applied = false;
     entry.undone = true;
     entry.timestamp = Date.now();
@@ -291,6 +372,7 @@ export function skipCurrent(): void {
   if (!page) return;
 
   manualEditing.value = false;
+  clearPreviewState();
   if (
     preManualAfter.value !== null &&
     currentAfter.value !== preManualAfter.value

@@ -24,6 +24,35 @@ export const loggedIn = ref(false);
 export const loginError = ref<string | null>(null);
 export const loginBusy = ref(false);
 export const loggedInAs = ref<string | null>(null);
+/** True when the MediaWiki account is in the `bot` group (or spoofed for testing). */
+export const hasBotGroup = ref(false);
+
+/** Actual MW bot group; OR'd with window.__PILLBUG_SPOOF_BOT__. */
+let realHasBotGroup = false;
+let spoofBotGroup = false;
+
+function syncHasBotGroup(): void {
+  hasBotGroup.value = realHasBotGroup || spoofBotGroup;
+}
+
+function installBotSpoofHook(): void {
+  if (typeof window === "undefined") return;
+  // Testing only: `window.__PILLBUG_SPOOF_BOT__ = true` shows the Bot checkbox
+  // without a MediaWiki bot group. Live-updates hasBotGroup when set.
+  Object.defineProperty(window, "__PILLBUG_SPOOF_BOT__", {
+    configurable: true,
+    enumerable: false,
+    get(): boolean {
+      return spoofBotGroup;
+    },
+    set(value: unknown) {
+      spoofBotGroup = value === true;
+      syncHasBotGroup();
+    },
+  });
+}
+
+installBotSpoofHook();
 
 /**
  * Bumped after each successful siteinfo load so UI (namespace list) re-reads
@@ -175,6 +204,8 @@ async function attachSession(expectedBotUser?: string): Promise<void> {
   );
   loggedIn.value = true;
   loggedInAs.value = name;
+  realHasBotGroup = info.groups?.includes("bot") ?? false;
+  syncHasBotGroup();
   sessionOrigin.value = normalizedWikiOrigin();
 }
 
@@ -184,6 +215,8 @@ function clearSession(): void {
   void import("./prefetch").then((m) => m.clearPrefetch());
   loggedIn.value = false;
   loggedInAs.value = null;
+  realHasBotGroup = false;
+  syncHasBotGroup();
   sessionOrigin.value = null;
   password.value = "";
 }
@@ -205,6 +238,8 @@ async function assertEditableSession(): Promise<void> {
   const name = assertNamedAccount(info, username.value.trim() || undefined);
   loggedInAs.value = name;
   loggedIn.value = true;
+  realHasBotGroup = info.groups?.includes("bot") ?? false;
+  syncHasBotGroup();
 }
 
 /** Resolve title + fetch wikitext (requires an attached session / siteinfo). */
@@ -219,9 +254,10 @@ export async function savePage(
   text: string,
   summary = "",
   minor = false,
+  bot = false,
 ): Promise<EditResult> {
   await assertEditableSession();
-  const result = await client.save(title, text, summary, minor);
+  const result = await client.save(title, text, summary, minor, bot);
   if (!result || result.result !== "Success") {
     throw new Error(
       result
@@ -230,6 +266,15 @@ export async function savePage(
     );
   }
   return result;
+}
+
+/** Render wikitext as HTML (MediaWiki parse preview). */
+export async function previewWikitext(
+  text: string,
+  title: string,
+): Promise<string> {
+  requireLoggedIn();
+  return client.parsePreview(text, title);
 }
 
 /** Generate titles from an AWB-style list source (requires login/siteinfo). */

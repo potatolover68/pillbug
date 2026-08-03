@@ -1,16 +1,20 @@
 <script setup lang="ts">
-import { loggedIn } from "../../wiki/session";
+import { hasBotGroup, loggedIn } from "../../wiki/session";
 import {
   applyCurrent,
   batchError,
   batchRunning,
+  botMode,
   canManualEdit,
+  canPreview,
   canPrimaryAction,
   canSkip,
   editSummary,
   markMinor,
   logStatus,
   manualEditing,
+  previewBusy,
+  previewing,
   primaryAction,
   reviewLogs,
   saveBusy,
@@ -21,6 +25,7 @@ import {
   startBatch,
   stopBatch,
   toggleManualEdit,
+  togglePreview,
   undoCurrent,
 } from "./state";
 import { pageQueue } from "../../wiki/queue";
@@ -59,7 +64,11 @@ async function onBatchToggle(): Promise<void> {
     <div class="minor-row">
       <label class="minor-toggle">
         <input v-model="markMinor" type="checkbox" />
-        <span>Minor edit</span>
+        <span>minor</span>
+      </label>
+      <label v-if="hasBotGroup" class="minor-toggle bot-toggle">
+        <input v-model="botMode" type="checkbox" />
+        <span>bot</span>
       </label>
       <button
         class="panel-btn edit-btn"
@@ -69,6 +78,15 @@ async function onBatchToggle(): Promise<void> {
         @click="toggleManualEdit"
       >
         {{ manualEditing ? "Stop editing" : "Edit" }}
+      </button>
+      <button
+        class="panel-btn edit-btn"
+        type="button"
+        :disabled="!canPreview && !previewing"
+        :title="previewing ? 'Close preview' : 'Preview ContentAfter'"
+        @click="togglePreview"
+      >
+        {{ previewBusy ? "…" : previewing ? "Close" : "Preview" }}
       </button>
     </div>
 
@@ -160,6 +178,10 @@ async function onBatchToggle(): Promise<void> {
   line-height: var(--row-h);
   cursor: pointer;
   user-select: none;
+}
+
+.bot-toggle {
+  flex: none;
 }
 
 .minor-toggle input {
