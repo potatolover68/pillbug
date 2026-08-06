@@ -18,6 +18,7 @@ import {
   formatWikilink,
   getNthTemplate,
   getTemplateParameter,
+  indentTemplates,
   isStubTemplateName,
   joinTemplates,
   removeTemplateParameter,
@@ -1118,6 +1119,24 @@ const hasParameter: NodeSpec = {
   },
 };
 
+const indentTemplatesNode: NodeSpec = {
+  typeId: "wiki/indent-templates",
+  displayName: "Indent Templates",
+  description:
+    "Reformat each template to multi-line indented wikitext (aligned | name = value).",
+  color: MW_COLOR,
+  group: GROUP_EDIT,
+  inputs: {
+    templates: { type: TEMPLATES_TYPE },
+  },
+  outputs: {
+    result: { type: TEMPLATES_TYPE },
+  },
+  execute: (inputs) => ({
+    result: indentTemplates(requireTemplates(inputs.templates)),
+  }),
+};
+
 const applyTemplates: NodeSpec = {
   typeId: "wiki/apply-templates",
   displayName: "Apply Templates To Content",
@@ -1203,6 +1222,7 @@ export const mediaWikiNodes: NodeSpecRegistry = {
   [removeParameter.typeId]: removeParameter,
   [setParameter.typeId]: setParameter,
   [hasParameter.typeId]: hasParameter,
+  [indentTemplatesNode.typeId]: indentTemplatesNode,
   [applyTemplates.typeId]: applyTemplates,
   [deleteTemplatesFromContent.typeId]: deleteTemplatesFromContent,
   [regexTypoFixing.typeId]: regexTypoFixing,

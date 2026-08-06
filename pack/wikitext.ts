@@ -130,6 +130,60 @@ export function serializeTemplate(t: Template): string {
   return `{{${inner}}}`;
 }
 
+/**
+ * Multi-line indented form (AWB-style): name on first line, one `| name = value`
+ * per param with aligned `=`, closing `}}` on its own line.
+ */
+export function formatIndentedTemplate(t: Template): string {
+  const namedWidths = t.params
+    .filter((p): p is TemplateNamedParam => p.kind === "named")
+    .map((p) => p.name.length);
+  const width = namedWidths.length > 0 ? Math.max(...namedWidths) : 0;
+
+  const lines: string[] = [`{{${t.name}`];
+  for (const p of t.params) {
+    if (p.kind === "named") {
+      const pad = " ".repeat(Math.max(0, width - p.name.length));
+      lines.push(`| ${p.name}${pad} = ${p.value.trim()}`);
+    } else {
+      lines.push(`| ${p.value.trim()}`);
+    }
+  }
+  lines.push("}}");
+  return lines.join("\n");
+}
+
+/** Reformat each template to indented multi-line wikitext (for Apply). */
+export function indentTemplate(t: Template): Template {
+  const params = t.params.map((p) =>
+    p.kind === "named"
+      ? {
+          ...p,
+          value: p.value.trim(),
+          wsBefore: " ",
+          wsAfterName: " ",
+        }
+      : { ...p, value: p.value.trim() },
+  );
+  const next: Template = {
+    ...t,
+    params,
+    nameWsLeading: "",
+    nameWsTrailing: "",
+    pristine: false,
+  };
+  // Store indented text as raw and mark pristine so Apply keeps formatting.
+  return {
+    ...next,
+    raw: formatIndentedTemplate(next),
+    pristine: true,
+  };
+}
+
+export function indentTemplates(templates: Template[]): Template[] {
+  return templates.map(indentTemplate);
+}
+
 function renumberPositionals(params: TemplateParam[]): TemplateParam[] {
   let index = 0;
   return params.map((p) => {
