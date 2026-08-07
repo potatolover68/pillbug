@@ -34,6 +34,7 @@ import {
   writeTemplateName,
   type Template,
 } from "./wikitext.ts";
+import { fetchPageContents } from "./pageContents.ts";
 import { applyAwbTypos } from "./typos.ts";
 
 const MW_COLOR = "#3d8bfd";
@@ -861,6 +862,36 @@ const orderArticleNode: NodeSpec = {
   }),
 };
 
+const getPageContents: NodeSpec = {
+  typeId: "wiki/get-page-contents",
+  displayName: "Get Page Contents",
+  description:
+    "Fetch wikitext for a title (or string). Missing pages yield empty content and exists=false. Uses a blocking wiki read (graph execute is sync).",
+  color: MW_COLOR,
+  group: GROUP_PAGE,
+  inputs: {
+    title: titleOrString,
+  },
+  outputs: {
+    content: { type: "string" },
+    exists: { type: "boolean" },
+  },
+  execute: (inputs) => {
+    const raw = asString(inputs.title).trim();
+    if (!raw) {
+      return { content: "", exists: false };
+    }
+    let titleText = raw;
+    try {
+      titleText = new WikiTitle(raw).getPrefixedText();
+    } catch {
+      // Siteinfo may be unloaded; fall back to the raw string.
+    }
+    const result = fetchPageContents(titleText);
+    return { content: result.content, exists: result.exists };
+  },
+};
+
 const parseTemplates: NodeSpec = {
   typeId: "wiki/parse-templates",
   displayName: "Parse Templates From Content",
@@ -1210,6 +1241,7 @@ export const mediaWikiNodes: NodeSpecRegistry = {
   [retargetWikilink.typeId]: retargetWikilink,
   [unlinkWikilink.typeId]: unlinkWikilink,
   [orderArticleNode.typeId]: orderArticleNode,
+  [getPageContents.typeId]: getPageContents,
   [parseTemplates.typeId]: parseTemplates,
   [findTemplatesByNameInContent.typeId]: findTemplatesByNameInContent,
   [filterTemplatesByNameNode.typeId]: filterTemplatesByNameNode,
