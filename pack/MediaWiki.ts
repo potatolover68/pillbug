@@ -602,6 +602,12 @@ const stringToTitle: NodeSpec = {
   description: "Parse a string into a wiki/title (requires siteinfo / login).",
   color: MW_COLOR,
   group: GROUP_TITLE,
+  inputs: {
+    text: { type: "string" },
+  },
+  outputs: {
+    title: { type: "wiki/title" },
+  },
   execute: (inputs) => {
     const text = asString(inputs.text).trim();
     if (!text) throw new Error("Empty title string");
