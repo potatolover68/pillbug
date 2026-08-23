@@ -8,6 +8,7 @@ import {
   projectNameDraft,
   projectStatus,
   refreshProjectList,
+  saveButtonLabel,
   saveCopy,
   saveCurrent,
 } from "./projectUi";
@@ -35,9 +36,10 @@ onMounted(() => {
         class="panel-btn"
         type="button"
         :disabled="projectBusy || !projectNameDraft.trim()"
+        :title="saveButtonLabel ?? 'Save project'"
         @click="saveCurrent"
       >
-        Save
+        {{ saveButtonLabel ?? "Save" }}
       </button>
       <button
         class="panel-btn"

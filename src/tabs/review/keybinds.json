@@ -1,0 +1,17 @@
+{
+  "save": "Space",
+  "skip": "Escape",
+  "startStopBatch": "b",
+  "toggleEdit": "e",
+  "togglePreview": "p",
+  "toggleMinor": "m",
+  "toggleBot": "o",
+  "focusSummary": "s",
+  "blurSummary": "Escape",
+  "diffScrollDown": "j",
+  "diffScrollUp": "k",
+  "diffPageDown": "PageDown",
+  "diffPageUp": "PageUp",
+  "diffNextHunk": "n",
+  "diffPrevHunk": "N"
+}

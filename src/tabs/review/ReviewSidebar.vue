@@ -29,6 +29,7 @@ import {
   undoCurrent,
 } from "./state";
 import { pageQueue } from "../../wiki/queue";
+import { withKeybind } from "./useReviewKeybinds";
 
 function formatTime(timestamp: number): string {
   return new Date(timestamp).toLocaleString();
@@ -59,14 +60,22 @@ async function onBatchToggle(): Promise<void> {
       class="panel-textarea"
       placeholder="Edit summary…"
       rows="2"
+      :title="withKeybind('Edit summary', 'focusSummary')"
     />
 
     <div class="minor-row">
-      <label class="minor-toggle">
+      <label
+        class="minor-toggle"
+        :title="withKeybind('Mark as minor edit', 'toggleMinor')"
+      >
         <input v-model="markMinor" type="checkbox" />
         <span>minor</span>
       </label>
-      <label v-if="hasBotGroup" class="minor-toggle bot-toggle">
+      <label
+        v-if="hasBotGroup"
+        class="minor-toggle bot-toggle"
+        :title="withKeybind('Bot mode', 'toggleBot')"
+      >
         <input v-model="botMode" type="checkbox" />
         <span>bot</span>
       </label>
@@ -74,7 +83,12 @@ async function onBatchToggle(): Promise<void> {
         class="panel-btn edit-btn"
         type="button"
         :disabled="!canManualEdit"
-        :title="manualEditing ? 'Stop editing' : 'Edit ContentAfter'"
+        :title="
+          withKeybind(
+            manualEditing ? 'Stop editing' : 'Edit ContentAfter',
+            manualEditing ? 'blurSummary' : 'toggleEdit',
+          )
+        "
         @click="toggleManualEdit"
       >
         {{ manualEditing ? "Stop editing" : "Edit" }}
@@ -83,7 +97,12 @@ async function onBatchToggle(): Promise<void> {
         class="panel-btn edit-btn"
         type="button"
         :disabled="!canPreview && !previewing"
-        :title="previewing ? 'Close preview' : 'Preview ContentAfter'"
+        :title="
+          withKeybind(
+            previewing ? 'Close preview' : 'Preview ContentAfter',
+            'togglePreview',
+          )
+        "
         @click="togglePreview"
       >
         {{ previewBusy ? "…" : previewing ? "Close" : "Preview" }}
@@ -98,6 +117,9 @@ async function onBatchToggle(): Promise<void> {
           (!loggedIn && !batchRunning) ||
           (!batchRunning && pageQueue.length === 0)
         "
+        :title="
+          withKeybind(batchRunning ? 'Stop batch' : 'Start batch', 'startStopBatch')
+        "
         @click="onBatchToggle"
       >
         {{ batchRunning ? "Stop" : "Start" }}
@@ -106,6 +128,12 @@ async function onBatchToggle(): Promise<void> {
         class="panel-btn"
         type="button"
         :disabled="!canPrimaryAction"
+        :title="
+          withKeybind(
+            primaryAction === 'undo' ? 'Undo' : 'Save',
+            'save',
+          )
+        "
         @click="onPrimaryAction"
       >
         {{ saveBusy ? "…" : primaryAction === "undo" ? "Undo" : "Save" }}
@@ -114,6 +142,7 @@ async function onBatchToggle(): Promise<void> {
         class="panel-btn"
         type="button"
         :disabled="!canSkip"
+        :title="withKeybind('Skip', 'skip')"
         @click="skipCurrent"
       >
         Skip

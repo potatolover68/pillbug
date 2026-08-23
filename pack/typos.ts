@@ -1,6 +1,8 @@
 /**
  * AWB RegEx Typo Fix helpers (parse Wikipedia:AutoWikiBrowser/Typos wikitext).
  * Rules are loaded at app startup via setAwbTypoRules; execute applies sync.
+ *
+ * See also https://github.com/wikimedia-gadgets/JWB/blob/master/RETF/RETF.js
  */
 
 export type AwbTypoRule = {
@@ -65,11 +67,43 @@ export function parseAwbTypoRules(wikitext: string): AwbTypoRule[] {
   return rules;
 }
 
-/** Apply cached AWB typo rules in order (global replace each). */
+/**
+ * Apply cached AWB typo rules in order.
+ *
+ * Exclusion behavior follows JavaScript Wiki Browser (JWB) RETF.replace by
+ * Joeytje50, itself based on AutoWikiBrowser typo skip rules:
+ * https://en.wikipedia.org/wiki/Wikipedia:AutoWikiBrowser/Typos#AutoWikiBrowser_.28AWB.29
+ *
+ * - Skip a rule entirely if its find pattern appears in a wikilink target.
+ * - Otherwise only replace matches outside File: links, {{templates}},
+ *   "double-quoted" spans, and text after `:` or `*` on a line.
+ */
 export function applyAwbTypos(content: string): string {
-  let out = content;
+  let text = content;
   for (const rule of awbTypoRules) {
-    out = out.replace(rule.find, rule.replace);
+    const source = rule.find.source;
+    if (!source) continue;
+
+    try {
+      // JWB: ignore rule when the find pattern appears inside a wikilink target.
+      const wikiLinkTarget = new RegExp(
+        `\\[\\[[^|\\]]*${source}[^|\\]]*(\\||\\]\\])`,
+      );
+      if (wikiLinkTarget.test(text)) continue;
+
+      // JWB / AWB: File:links | templates | "quotes" | text after : or *
+      // Group 1 is the only region where the typo replace may run.
+      const exclude = new RegExp(
+        `\\[\\[File:[^|\\]]+\\|?|{{.+?}}|"[^"]+"|[:\\*].*|(${source})`,
+        "ig",
+      );
+      text = text.replace(exclude, (match, g1: string | undefined) => {
+        if (!g1) return match;
+        return g1.replace(new RegExp(source, "g"), rule.replace);
+      });
+    } catch {
+      // Skip rules whose pattern cannot be composed into the exclusion regex.
+    }
   }
-  return out;
+  return text;
 }

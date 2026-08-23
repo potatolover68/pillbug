@@ -24,7 +24,20 @@ export const projectRecords = ref<ProjectListItem[]>([]);
 export const projectBusy = ref(false);
 export const projectStatus = ref<string | null>(null);
 export const projectError = ref<string | null>(null);
+/** Transient label shown on the Save button after a successful save. */
+export const saveButtonLabel = ref<string | null>(null);
 export const saveCopyMode = ref<SaveCopyMode>(getSaveCopyMode());
+
+let saveLabelTimer: ReturnType<typeof setTimeout> | null = null;
+
+function flashSaveButton(label: string): void {
+  if (saveLabelTimer !== null) clearTimeout(saveLabelTimer);
+  saveButtonLabel.value = label;
+  saveLabelTimer = setTimeout(() => {
+    saveButtonLabel.value = null;
+    saveLabelTimer = null;
+  }, 2000);
+}
 
 export const draftMatchesCurrent = computed(
   () => projectNameDraft.value.trim() === currentProjectName.value,
@@ -56,7 +69,7 @@ export async function saveCurrent(): Promise<void> {
   try {
     await saveProject(name);
     setCurrentName(name);
-    projectStatus.value = `Saved “${name}”`;
+    flashSaveButton(`Saved “${name}”`);
     await refreshProjectList();
   } catch (err) {
     projectError.value = err instanceof Error ? err.message : String(err);

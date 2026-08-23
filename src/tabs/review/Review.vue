@@ -1,8 +1,16 @@
 <script setup lang="ts">
 import { Diff } from "vue-diff";
 import "vue-diff/dist/index.css";
-import { computed, nextTick, useTemplateRef, watch } from "vue";
+import { computed, nextTick, ref, useTemplateRef, watch } from "vue";
+import DiffLineDiscard from "../shared/DiffLineDiscard.vue";
 import DiffOverviewRuler from "../shared/DiffOverviewRuler.vue";
+import {
+  discardLineCapturing,
+  restoreLineFromRecord,
+  shiftRestoresAfterDiscard,
+  shiftRestoresAfterRestore,
+  type LineRestoreRecord,
+} from "../shared/diffLines";
 import {
   currentAfter,
   currentBefore,
@@ -11,10 +19,12 @@ import {
   previewHtml,
   previewing,
 } from "./state";
+import { useReviewKeybinds } from "./useReviewKeybinds";
 
 const LINE_MIN_HEIGHT = 24;
 
 const containerRef = useTemplateRef<HTMLElement>("container");
+const lineRestores = ref<LineRestoreRecord[]>([]);
 
 const previewDoc = computed(() => {
   const body = previewHtml.value;
@@ -27,11 +37,17 @@ img,video{max-width:100%;height:auto;}
 </style></head><body><div class="mw-parser-output">${body}</div></body></html>`;
 });
 
+function getViewer(): HTMLElement | null {
+  return (
+    (containerRef.value?.querySelector(
+      ".vue-diff-viewer",
+    ) as HTMLElement | null) ?? null
+  );
+}
+
 function scrollToFirstDiff(): void {
   if (manualEditing.value || previewing.value) return;
-  const viewer = containerRef.value?.querySelector(
-    ".vue-diff-viewer",
-  ) as HTMLElement | null;
+  const viewer = getViewer();
   if (!viewer) return;
   if (viewer.scrollHeight <= viewer.clientHeight + 1) return;
 
@@ -45,9 +61,111 @@ function scrollToFirstDiff(): void {
   viewer.scrollTop = Math.max(0, top);
 }
 
-watch([currentBefore, currentAfter, manualEditing, previewing], async () => {
+function collectHunkRows(viewer: HTMLElement): HTMLElement[] {
+  const cells = viewer.querySelectorAll(
+    ".vue-diff-cell-removed, .vue-diff-cell-added",
+  );
+  const rows: HTMLElement[] = [];
+  const seen = new Set<HTMLElement>();
+  for (const cell of cells) {
+    const row = cell.closest(".vue-diff-row") as HTMLElement | null;
+    if (!row || seen.has(row)) continue;
+    seen.add(row);
+    rows.push(row);
+  }
+  return rows;
+}
+
+function scrollByLines(lines: number): void {
+  const viewer = getViewer();
+  if (!viewer) return;
+  viewer.scrollTop += lines * LINE_MIN_HEIGHT;
+}
+
+function scrollByPages(pages: number): void {
+  const viewer = getViewer();
+  if (!viewer) return;
+  viewer.scrollTop += pages * viewer.clientHeight * 0.9;
+}
+
+function jumpHunk(direction: 1 | -1): void {
+  const viewer = getViewer();
+  if (!viewer) return;
+  const rows = collectHunkRows(viewer);
+  if (rows.length === 0) return;
+
+  const anchor = viewer.scrollTop + viewer.clientHeight * 0.2;
+  let target: HTMLElement | null = null;
+
+  if (direction > 0) {
+    for (const row of rows) {
+      if (row.offsetTop > anchor + 1) {
+        target = row;
+        break;
+      }
+    }
+    target ??= rows[0] ?? null;
+  } else {
+    for (let i = rows.length - 1; i >= 0; i--) {
+      const row = rows[i]!;
+      if (row.offsetTop < anchor - 1) {
+        target = row;
+        break;
+      }
+    }
+    target ??= rows[rows.length - 1] ?? null;
+  }
+
+  if (!target) return;
+  viewer.scrollTop = Math.max(0, target.offsetTop - viewer.clientHeight * 0.2);
+}
+
+function onDiscardLine(rowIndex: number): void {
+  const result = discardLineCapturing(
+    currentBefore.value,
+    currentAfter.value,
+    rowIndex,
+  );
+  if (!result) return;
+  lineRestores.value = [
+    ...shiftRestoresAfterDiscard(lineRestores.value, result.record),
+    result.record,
+  ];
+  currentAfter.value = result.text;
+}
+
+function onRestoreLine(id: string): void {
+  const index = lineRestores.value.findIndex((r) => r.id === id);
+  if (index < 0) return;
+  const record = lineRestores.value[index]!;
+  const next = restoreLineFromRecord(currentAfter.value, record);
+  if (next === null) return;
+  const remaining = lineRestores.value.filter((r) => r.id !== id);
+  lineRestores.value = shiftRestoresAfterRestore(remaining, record);
+  currentAfter.value = next;
+}
+
+useReviewKeybinds({
+  scrollByLines,
+  scrollByPages,
+  jumpHunk,
+});
+
+// Jump on baseline / mode change only — not on every ContentAfter edit
+// (manual typing or per-line discard).
+watch([currentBefore, manualEditing, previewing], async () => {
+  lineRestores.value = [];
   await nextTick();
   requestAnimationFrame(() => scrollToFirstDiff());
+});
+
+watch(manualEditing, async (editing) => {
+  if (!editing) return;
+  await nextTick();
+  const textarea = containerRef.value?.querySelector(
+    "textarea.manual-edit",
+  ) as HTMLTextAreaElement | null;
+  textarea?.focus();
 });
 </script>
 
@@ -71,6 +189,14 @@ watch([currentBefore, currentAfter, manualEditing, previewing], async () => {
     </div>
     <template v-else>
       <Diff :current="currentAfter" :prev="currentBefore" />
+      <DiffLineDiscard
+        :root="containerRef"
+        :prev="currentBefore"
+        :current="currentAfter"
+        :restores="lineRestores"
+        @discard="onDiscardLine"
+        @restore="onRestoreLine"
+      />
       <DiffOverviewRuler
         :root="containerRef"
         :prev="currentBefore"
