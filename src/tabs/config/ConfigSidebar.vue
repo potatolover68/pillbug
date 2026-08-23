@@ -10,6 +10,7 @@ import {
   loggedInAs,
   logout as wikiLogout,
   password,
+  persistWikiConfig,
   username,
   wikiOrigin,
 } from "../../wiki/session";
@@ -53,7 +54,17 @@ async function loadAuthConfig(): Promise<void> {
   }
 }
 
-function startOAuth(): void {
+async function startOAuth(): Promise<void> {
+  applyWikiOrigin(originDraft.value);
+  let next: string;
+  try {
+    next = new URL(originDraft.value.trim()).origin;
+  } catch {
+    return;
+  }
+  // applyWikiOrigin leaves wikiOrigin unchanged when the URL is invalid.
+  if (wikiOrigin.value !== next) return;
+  await persistWikiConfig();
   window.location.assign("/api/oauth/start");
 }
 
