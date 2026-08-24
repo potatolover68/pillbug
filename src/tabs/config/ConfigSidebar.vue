@@ -89,7 +89,7 @@ onMounted(() => {
 
 <template>
   <div class="config-sidebar">
-    <label class="panel-field">
+    <label class="panel-field" data-tour="config-wiki-origin">
       <span class="panel-label">Wiki origin</span>
       <div class="origin-row">
         <input
@@ -111,72 +111,74 @@ onMounted(() => {
       </div>
     </label>
 
-    <template v-if="authConfigLoaded && oauthEnabled">
-      <div class="panel-actions oauth-actions">
-        <button
-          class="panel-btn oauth-primary"
-          type="button"
-          :disabled="loginBusy || loggedIn"
-          @click="startOAuth"
-        >
-          <span v-if="!loggedIn">OAuth Login</span>
-          <span v-else>Logged in as {{ loggedInAs || "…" }}</span>
-        </button>
-        <button
-          class="panel-btn oauth-logout"
-          type="button"
-          :disabled="!loggedIn || loginBusy"
-          @click="onLogout"
-        >
-          Logout
-        </button>
-      </div>
-    </template>
+    <div data-tour="config-login">
+      <template v-if="authConfigLoaded && oauthEnabled">
+        <div class="panel-actions oauth-actions">
+          <button
+            class="panel-btn oauth-primary"
+            type="button"
+            :disabled="loginBusy || loggedIn"
+            @click="startOAuth"
+          >
+            <span v-if="!loggedIn">OAuth Login</span>
+            <span v-else>Logged in as {{ loggedInAs || "…" }}</span>
+          </button>
+          <button
+            class="panel-btn oauth-logout"
+            type="button"
+            :disabled="!loggedIn || loginBusy"
+            @click="onLogout"
+          >
+            Logout
+          </button>
+        </div>
+      </template>
 
-    <template v-else-if="authConfigLoaded">
-      <label class="panel-field">
-        <span class="panel-label">Username</span>
-        <input
-          v-model="username"
-          class="panel-input"
-          type="text"
-          placeholder="User@BotName"
-          autocomplete="username"
-        />
-      </label>
+      <template v-else-if="authConfigLoaded">
+        <label class="panel-field">
+          <span class="panel-label">Username</span>
+          <input
+            v-model="username"
+            class="panel-input"
+            type="text"
+            placeholder="User@BotName"
+            autocomplete="username"
+          />
+        </label>
 
-      <label class="panel-field">
-        <span class="panel-label">Bot password</span>
-        <input
-          v-model="password"
-          class="panel-input"
-          type="password"
-          placeholder="Not stored"
-          autocomplete="current-password"
-        />
-      </label>
+        <label class="panel-field">
+          <span class="panel-label">Bot password</span>
+          <input
+            v-model="password"
+            class="panel-input"
+            type="password"
+            placeholder="Not stored"
+            autocomplete="current-password"
+          />
+        </label>
 
-      <div class="panel-actions">
-        <button
-          class="panel-btn"
-          type="button"
-          :disabled="!canLogin"
-          @click="login"
-        >
-          {{ loginBusy ? "…" : "Login" }}
-        </button>
-        <button
-          class="panel-btn"
-          type="button"
-          :disabled="!loggedIn || loginBusy"
-          @click="onLogout"
-        >
-          Logout
-        </button>
-      </div>
-    </template>
+        <div class="panel-actions">
+          <button
+            class="panel-btn"
+            type="button"
+            :disabled="!canLogin"
+            @click="login"
+          >
+            {{ loginBusy ? "…" : "Login" }}
+          </button>
+          <button
+            class="panel-btn"
+            type="button"
+            :disabled="!loggedIn || loginBusy"
+            @click="onLogout"
+          >
+            Logout
+          </button>
+        </div>
+      </template>
 
-    <p v-if="loginError" class="panel-status error">{{ loginError }}</p>
+      <p v-if="loginError" class="panel-status error">{{ loginError }}</p>
+    </div>
 
     <ProjectsList />
   </div>

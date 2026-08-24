@@ -9,7 +9,7 @@ import { pack as basePack } from "@nodish/base";
 import { pack as wikiPack } from "../../pack/index";
 
 import { createProcessMap, createSkipMap } from "../nodish/createAppNodeMap";
-import { map, skipMap } from "../tabs/shared";
+import { map, skipMap } from "../tabs/shared/maps";
 import {
   clearPreviewInputsFromMaps,
   syncPreviewInputs,

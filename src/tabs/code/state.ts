@@ -1,7 +1,7 @@
 import { ref, shallowRef } from "vue";
 import { INPUT_TYPE, type NodeMap } from "@nodish/core";
 import type { WikiTitle } from "../../wiki/title";
-import { map, skipMap } from "../shared";
+import { map, skipMap } from "../shared/maps";
 
 export type CodeGraphKind = "process" | "skip";
 

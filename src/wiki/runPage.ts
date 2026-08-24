@@ -1,6 +1,6 @@
 import { runGraph } from "@nodish/core";
 import type { WikiTitle } from "./title";
-import { map, skipMap } from "../tabs/shared";
+import { map, skipMap } from "../tabs/shared/maps";
 
 export type GraphRunOutcome =
   | { kind: "skip"; before: string; prefixed: string }

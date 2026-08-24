@@ -72,7 +72,7 @@ function setGraph(kind: CodeGraphKind): void {
 
 <template>
   <div class="code-sidebar">
-    <div class="panel-actions">
+    <div class="panel-actions" data-tour="code-graph-toggle">
       <button
         class="panel-btn"
         type="button"
@@ -91,7 +91,7 @@ function setGraph(kind: CodeGraphKind): void {
       </button>
     </div>
 
-    <label class="panel-field">
+    <label class="panel-field" data-tour="code-test-page">
       <span class="panel-label">Test page</span>
       <input
         v-model="testPageTitle"
@@ -102,7 +102,7 @@ function setGraph(kind: CodeGraphKind): void {
       />
     </label>
 
-    <div class="panel-actions">
+    <div class="panel-actions" data-tour="code-test-actions">
       <button
         class="panel-btn"
         type="button"

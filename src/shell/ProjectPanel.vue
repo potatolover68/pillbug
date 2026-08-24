@@ -19,7 +19,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="project-panel">
+  <div class="project-panel" data-tour="config-project-bar">
     <label class="panel-field">
       <span class="panel-label">Project</span>
       <input

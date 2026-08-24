@@ -15,7 +15,7 @@ import {
   type GeneratorSnapshot,
 } from "../tabs/config/generatorState";
 import { editSummary } from "../tabs/review/state";
-import { map, skipMap } from "../tabs/shared";
+import { map, skipMap } from "../tabs/shared/maps";
 import {
   clearPreviewInputsFromMaps,
   syncPreviewInputs,

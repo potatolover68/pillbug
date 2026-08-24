@@ -4,8 +4,8 @@ import {
   APP_VERSION,
   GITHUB_ISSUES_NEW,
   GITHUB_REPO,
-  GITHUB_WIKI,
 } from "../meta";
+import { toggleChangelog } from "./tabs";
 </script>
 
 <template>
@@ -29,14 +29,13 @@ import {
       bug?
     </a>
     <span>/</span>
-    <a
-      class="about-link"
-      :href="GITHUB_WIKI"
-      target="_blank"
-      rel="noopener noreferrer"
+    <button
+      type="button"
+      class="about-link about-link-btn"
+      @click="toggleChangelog"
     >
-      docs
-    </a>
+      changelog
+    </button>
   </div>
 </template>
 
@@ -61,5 +60,14 @@ import {
 .about-link:hover {
   text-decoration: underline;
   text-underline-offset: 2px;
+}
+
+.about-link-btn {
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
 }
 </style>

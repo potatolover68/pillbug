@@ -2,13 +2,12 @@
 import {
   TABS,
   activeTab,
-  changelogOpen,
   setActiveTab,
-  toggleChangelog,
   type AppTab,
 } from "./tabs";
 import AboutLinks from "./AboutLinks.vue";
 import ProjectPanel from "./ProjectPanel.vue";
+import { startWelcomeTour } from "./welcomeTour";
 import "./sidebar.css";
 </script>
 
@@ -22,6 +21,7 @@ import "./sidebar.css";
         type="button"
         :class="{ active: activeTab === tab.id }"
         :title="tab.label"
+        :data-tour="`tab-${tab.id}`"
         @click="setActiveTab(tab.id as AppTab)"
       >
         <span class="tab-label">{{ tab.label }}</span>
@@ -29,9 +29,9 @@ import "./sidebar.css";
       <button
         class="help-btn"
         type="button"
-        title="Changelog"
-        :class="{ active: changelogOpen }"
-        @click="toggleChangelog"
+        title="Welcome tour"
+        aria-label="Start welcome tour"
+        @click="startWelcomeTour"
       >
         ?
       </button>
@@ -78,8 +78,7 @@ import "./sidebar.css";
   min-width: 0;
 }
 
-.tab-btn.active,
-.help-btn.active {
+.tab-btn.active {
   color: #fff;
   outline: 1px solid var(--accent);
   outline-offset: -1px;
@@ -87,7 +86,7 @@ import "./sidebar.css";
 }
 
 .tab-btn:hover:not(.active),
-.help-btn:hover:not(.active) {
+.help-btn:hover {
   background: rgba(255, 255, 255, 0.12);
   color: #fff;
 }

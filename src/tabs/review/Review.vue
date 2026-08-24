@@ -20,6 +20,7 @@ import {
   previewing,
 } from "./state";
 import { useReviewKeybinds } from "./useReviewKeybinds";
+import { startReviewTour } from "./reviewTour";
 
 const LINE_MIN_HEIGHT = 24;
 
@@ -170,7 +171,17 @@ watch(manualEditing, async (editing) => {
 </script>
 
 <template>
-  <div ref="container" class="review-diff">
+  <div ref="container" class="review-diff" data-tour="review-diff">
+    <button
+      type="button"
+      class="tour-help"
+      data-tour="review-tour-help"
+      title="Review tour"
+      aria-label="Start Review tour"
+      @click="startReviewTour"
+    >
+      ?
+    </button>
     <textarea
       v-if="manualEditing"
       v-model="currentAfter"
@@ -216,6 +227,35 @@ watch(manualEditing, async (editing) => {
   height: 100%;
   min-height: 0;
   overflow: hidden;
+}
+
+.tour-help {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  z-index: 5;
+  box-sizing: border-box;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid rgba(0, 0, 0, 0.35);
+  border-radius: 2px;
+  background: #2a2d34;
+  color: #f5a623;
+  font-family: sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+  text-align: center;
+  text-shadow: none;
+  -webkit-font-smoothing: antialiased;
+  cursor: pointer;
+}
+
+.tour-help:hover {
+  color: #ffb84a;
+  background: #32363f;
 }
 
 .manual-edit {

@@ -10,9 +10,6 @@ export type QueueSource =
   | {
       kind: "category";
       title: string;
-      includePages: boolean;
-      includeSubcats: boolean;
-      includeFiles: boolean;
     }
   | {
       kind: "linksTo";
@@ -22,11 +19,6 @@ export type QueueSource =
       fileUsage: boolean;
       redirects: RedirectFilter;
       includeLinksToRedirects: boolean;
-    }
-  | {
-      kind: "prefix";
-      prefix: string;
-      strict: boolean;
     }
   | {
       kind: "linksOn";
@@ -114,13 +106,6 @@ export async function listFromSource(
 
   switch (source.kind) {
     case "category": {
-      const types: string[] = [];
-      if (source.includePages) types.push("page");
-      if (source.includeSubcats) types.push("subcat");
-      if (source.includeFiles) types.push("file");
-      if (types.length === 0) {
-        throw new Error("Select at least one category member type");
-      }
       let cmtitle = source.title.trim();
       if (!cmtitle) throw new Error("Category title is required");
       if (!/^Category:/i.test(cmtitle)) {
@@ -131,7 +116,6 @@ export async function listFromSource(
         {
           list: set("categorymembers"),
           cmtitle,
-          cmtype: set(...types),
           cmlimit: "max",
           ...(ns ? { cmnamespace: ns } : {}),
         },
@@ -223,53 +207,6 @@ export async function listFromSource(
       }
 
       return dedupePreserveOrder(parts.flat()).slice(0, LIST_SOFT_CAP);
-    }
-
-    case "prefix": {
-      const prefix = source.prefix.trim();
-      if (!prefix) throw new Error("Prefix is required");
-
-      if (source.strict) {
-        // allpages is single-namespace; query each selected ns (or main if none).
-        const nsList = namespaces.length > 0 ? namespaces : [0];
-        const parts: string[][] = [];
-        for (const namespace of nsList) {
-          parts.push(
-            await queryListPages(
-              session,
-              {
-                list: set("allpages"),
-                apprefix: prefix,
-                apnamespace: namespace,
-                aplimit: "max",
-              },
-              (query) => {
-                const rows =
-                  (query.allpages as Array<{ title?: string }>) ?? [];
-                return rows
-                  .map(titleFromRow)
-                  .filter((t): t is string => Boolean(t));
-              },
-            ),
-          );
-          if (parts.flat().length >= LIST_SOFT_CAP) break;
-        }
-        return dedupePreserveOrder(parts.flat()).slice(0, LIST_SOFT_CAP);
-      }
-
-      return queryListPages(
-        session,
-        {
-          list: set("prefixsearch"),
-          pssearch: prefix,
-          pslimit: "max",
-          ...(ns ? { psnamespace: ns } : {}),
-        },
-        (query) => {
-          const rows = (query.prefixsearch as Array<{ title?: string }>) ?? [];
-          return rows.map(titleFromRow).filter((t): t is string => Boolean(t));
-        },
-      );
     }
 
     case "linksOn": {

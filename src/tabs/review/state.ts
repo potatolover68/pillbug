@@ -1,5 +1,10 @@
 import { computed, ref, watch } from "vue";
-import { hasBotGroup, loggedIn, previewWikitext, savePage } from "../../wiki/session";
+import {
+  hasBotGroup,
+  loggedIn,
+  previewWikitext,
+  savePage,
+} from "../../wiki/session";
 import { pageQueue, removeFromQueue } from "../../wiki/queue";
 import {
   configurePrefetchHooks,
@@ -19,6 +24,8 @@ interface ReviewLogEntry {
   undone: boolean;
   timestamp: number;
 }
+import moorea from "./moorea.json";
+import nordmann from "./nordmann.json";
 
 export const editSummary = ref("");
 /** When true, saves are marked minor on the wiki. */
@@ -118,8 +125,7 @@ export async function togglePreview(): Promise<void> {
   try {
     previewHtml.value = await previewWikitext(currentAfter.value, page);
   } catch (error) {
-    previewError.value =
-      error instanceof Error ? error.message : String(error);
+    previewError.value = error instanceof Error ? error.message : String(error);
     previewing.value = false;
   } finally {
     previewBusy.value = false;
@@ -332,7 +338,13 @@ export async function undoCurrent(): Promise<void> {
     const summary = editSummary.value.trim()
       ? `Undid: ${editSummary.value.trim()}`
       : "Undid previous edit";
-    await savePage(entry.page, entry.before, summary, markMinor.value, botMode.value);
+    await savePage(
+      entry.page,
+      entry.before,
+      summary,
+      markMinor.value,
+      botMode.value,
+    );
     entry.applied = false;
     entry.undone = true;
     entry.timestamp = Date.now();
@@ -507,4 +519,130 @@ export function stopBatch(): void {
   batchAbort?.abort();
   batchAbort = null;
   stopPrefetch();
+}
+
+/** Stable ids so tour fixtures can be found / stripped. */
+const TOUR_LOG_APPLIED_ID = "pillbug-tour-review-applied";
+const TOUR_LOG_SKIPPED_ID = "pillbug-tour-review-skipped";
+
+const MOOREA_TOUR_BEFORE = moorea.before;
+const MOOREA_TOUR_AFTER = moorea.after;
+const NORDMANN_TOUR_BEFORE = nordmann.before;
+const NORDMANN_TOUR_AFTER = nordmann.after;
+
+type ReviewTourSnapshot = {
+  currentPage: string | null;
+  currentBefore: string;
+  currentAfter: string;
+  selectedLogId: string | null;
+  liveReview: { page: string; before: string; after: string } | null;
+  reviewLogs: ReviewLogEntry[];
+  manualEditing: boolean;
+  preManualAfter: string | null;
+  previewing: boolean;
+  previewHtml: string;
+  previewBusy: boolean;
+  previewError: string | null;
+  saveError: string | null;
+};
+
+let reviewTourSnapshot: ReviewTourSnapshot | null = null;
+
+function cloneLogEntry(entry: ReviewLogEntry): ReviewLogEntry {
+  return { ...entry };
+}
+
+/** Seed a sample diff + log rows for the Review tour; call endReviewTourDemo on exit. */
+export function beginReviewTourDemo(): void {
+  if (reviewTourSnapshot) endReviewTourDemo();
+
+  reviewTourSnapshot = {
+    currentPage: currentPage.value,
+    currentBefore: currentBefore.value,
+    currentAfter: currentAfter.value,
+    selectedLogId: selectedLogId.value,
+    liveReview: liveReview ? { ...liveReview } : null,
+    reviewLogs: reviewLogs.value.map(cloneLogEntry),
+    manualEditing: manualEditing.value,
+    preManualAfter: preManualAfter.value,
+    previewing: previewing.value,
+    previewHtml: previewHtml.value,
+    previewBusy: previewBusy.value,
+    previewError: previewError.value,
+    saveError: saveError.value,
+  };
+
+  clearManualEditState();
+  clearPreviewState();
+  saveError.value = null;
+  liveReview = null;
+
+  const now = Date.now();
+  const withoutTour = reviewLogs.value.filter(
+    (entry) =>
+      entry.id !== TOUR_LOG_APPLIED_ID && entry.id !== TOUR_LOG_SKIPPED_ID,
+  );
+  reviewLogs.value = [
+    {
+      id: TOUR_LOG_APPLIED_ID,
+      page: "Moorea sandpiper",
+      before: MOOREA_TOUR_BEFORE,
+      after: MOOREA_TOUR_AFTER,
+      applied: true,
+      skipped: false,
+      undone: false,
+      timestamp: now,
+    },
+    {
+      id: TOUR_LOG_SKIPPED_ID,
+      page: "Nordmann's greenshank",
+      before: NORDMANN_TOUR_BEFORE,
+      after: NORDMANN_TOUR_AFTER,
+      applied: false,
+      skipped: true,
+      undone: false,
+      timestamp: now - 60_000,
+    },
+    ...withoutTour.map(cloneLogEntry),
+  ];
+
+  // Live queue item: same sample so per-line discard is visible before selecting a log.
+  currentPage.value = "Moorea sandpiper";
+  currentBefore.value = MOOREA_TOUR_BEFORE;
+  currentAfter.value = MOOREA_TOUR_AFTER;
+  selectedLogId.value = null;
+}
+
+/** Select the sample applied log so the primary action becomes Undo. */
+export function showReviewTourAppliedLog(): void {
+  const entry = reviewLogs.value.find((row) => row.id === TOUR_LOG_APPLIED_ID);
+  if (!entry) return;
+  clearManualEditState();
+  clearPreviewState();
+  selectedLogId.value = entry.id;
+  currentPage.value = entry.page;
+  currentBefore.value = entry.before;
+  currentAfter.value = entry.after;
+  saveError.value = null;
+}
+
+/** Restore Review state from before beginReviewTourDemo. */
+export function endReviewTourDemo(): void {
+  const snap = reviewTourSnapshot;
+  if (!snap) return;
+  reviewTourSnapshot = null;
+
+  currentPage.value = snap.currentPage;
+  currentBefore.value = snap.currentBefore;
+  currentAfter.value = snap.currentAfter;
+  selectedLogId.value = snap.selectedLogId;
+  liveReview = snap.liveReview ? { ...snap.liveReview } : null;
+  reviewLogs.value = snap.reviewLogs.map(cloneLogEntry);
+  manualEditing.value = snap.manualEditing;
+  preManualAfter.value = snap.preManualAfter;
+  previewing.value = snap.previewing;
+  previewHtml.value = snap.previewHtml;
+  previewBusy.value = snap.previewBusy;
+  previewError.value = snap.previewError;
+  saveError.value = snap.saveError;
 }

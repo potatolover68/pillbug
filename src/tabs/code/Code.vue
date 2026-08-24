@@ -5,7 +5,7 @@ import { NodeViewer } from "@nodish/core";
 import { computed, useTemplateRef } from "vue";
 
 import DiffOverviewRuler from "../shared/DiffOverviewRuler.vue";
-import { map, skipMap } from "../shared";
+import { map, skipMap } from "../shared/maps";
 import {
   activeCodeGraph,
   testAfter,
@@ -14,6 +14,7 @@ import {
   testPanelOpen,
   testSkip,
 } from "./state";
+import { startCodeTour } from "./codeTour";
 
 const LINE_MIN_HEIGHT = 24;
 
@@ -42,7 +43,17 @@ const diffPaneRef = useTemplateRef<HTMLElement>("diffPane");
         />
       </div>
     </div>
-    <div class="editor-pane">
+    <div class="editor-pane" data-tour="code-canvas">
+      <button
+        type="button"
+        class="tour-help"
+        data-tour="code-tour-help"
+        title="Code tour"
+        aria-label="Start Code tour"
+        @click="startCodeTour"
+      >
+        ?
+      </button>
       <NodeViewer :map="activeMap" />
     </div>
   </div>
@@ -115,9 +126,39 @@ const diffPaneRef = useTemplateRef<HTMLElement>("diffPane");
 }
 
 .editor-pane {
+  position: relative;
   flex: 1;
   min-height: 0;
   overflow: hidden;
+}
+
+.tour-help {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  z-index: 5;
+  box-sizing: border-box;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid rgba(0, 0, 0, 0.35);
+  border-radius: 2px;
+  background: #2a2d34;
+  color: #f5a623;
+  font-family: sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+  text-align: center;
+  text-shadow: none;
+  -webkit-font-smoothing: antialiased;
+  cursor: pointer;
+}
+
+.tour-help:hover {
+  color: #ffb84a;
+  background: #32363f;
 }
 
 .code-main:not(.with-test) .editor-pane {

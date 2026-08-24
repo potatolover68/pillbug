@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { nextTick, onMounted } from "vue";
 import Config from "../tabs/config/Config.vue";
 import ConfigSidebar from "../tabs/config/ConfigSidebar.vue";
 import Code from "../tabs/code/Code.vue";
@@ -9,6 +10,13 @@ import Changelog from "../tabs/changelog/Changelog.vue";
 
 import SidebarShell from "./SidebarShell.vue";
 import { activeTab, changelogOpen } from "./tabs";
+import { maybeStartWelcomeTour } from "./welcomeTour";
+
+onMounted(() => {
+  void nextTick(() => {
+    maybeStartWelcomeTour();
+  });
+});
 </script>
 
 <template>

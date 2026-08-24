@@ -1,0 +1,139 @@
+.driver-popover.pillbug-tour {
+  --driver-popover-bg: #2a2d34;
+  --driver-popover-title-color: #eee;
+  --driver-popover-description-color: rgba(238, 238, 238, 0.85);
+  --driver-popover-border-radius: 2px;
+  --driver-popover-font-family: sans-serif;
+  --driver-popover-arrow-color: #2a2d34;
+
+  background: #2a2d34;
+  color: #eee;
+  border: 1px solid rgba(0, 0, 0, 0.35);
+  border-radius: 2px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  font-family: sans-serif;
+  padding: 8px 10px;
+  min-width: 220px;
+  max-width: 280px;
+}
+
+.driver-popover.pillbug-tour .driver-popover-title {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: #eee;
+  padding-right: 18px;
+}
+
+.driver-popover.pillbug-tour .driver-popover-title[style*="block"] + .driver-popover-description {
+  margin-top: 4px;
+}
+
+.driver-popover.pillbug-tour .driver-popover-description {
+  font-size: 12px;
+  line-height: 1.4;
+  color: rgba(238, 238, 238, 0.85);
+}
+
+.driver-popover.pillbug-tour .driver-popover-description a {
+  color: #f5a623;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.driver-popover.pillbug-tour .driver-popover-description a:visited {
+  color: #e09b2e;
+}
+
+.driver-popover.pillbug-tour .driver-popover-description a:hover,
+.driver-popover.pillbug-tour .driver-popover-description a:focus-visible {
+  color: #ffb84a;
+}
+
+.driver-popover.pillbug-tour .driver-popover-description a:active {
+  color: #ffc96b;
+}
+
+.driver-popover.pillbug-tour .driver-popover-footer {
+  margin-top: 8px;
+}
+
+.driver-popover.pillbug-tour .driver-popover-progress-text {
+  font-size: 11px;
+  color: rgba(238, 238, 238, 0.55);
+}
+
+.driver-popover.pillbug-tour .driver-popover-navigation-btns {
+  gap: 4px;
+}
+
+.driver-popover.pillbug-tour .driver-popover-prev-btn,
+.driver-popover.pillbug-tour .driver-popover-next-btn {
+  text-shadow: none;
+  border: none;
+  border-radius: 2px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.75);
+  font: inherit;
+  font-size: 12px;
+  padding: 2px 6px;
+  cursor: pointer;
+}
+
+.driver-popover.pillbug-tour .driver-popover-prev-btn:hover,
+.driver-popover.pillbug-tour .driver-popover-next-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.driver-popover.pillbug-tour .driver-popover-next-btn {
+  background: rgba(245, 166, 35, 0.18);
+  color: #f5a623;
+  outline: 1px solid #f5a623;
+  outline-offset: 0;
+}
+
+.driver-popover.pillbug-tour .driver-popover-next-btn:hover {
+  background: rgba(245, 166, 35, 0.28);
+  color: #ffb84a;
+}
+
+.driver-popover.pillbug-tour .driver-popover-close-btn {
+  width: 20px;
+  height: 20px;
+  font-size: 14px;
+  color: rgba(238, 238, 238, 0.55);
+}
+
+.driver-popover.pillbug-tour .driver-popover-close-btn:hover {
+  color: #eee;
+}
+
+/* CSS triangle: keep three sides transparent (do not set border-color on all sides). */
+.driver-popover.pillbug-tour .driver-popover-arrow {
+  border: 5px solid #2a2d34;
+}
+
+.driver-popover.pillbug-tour .driver-popover-arrow-side-left {
+  border-top-color: transparent;
+  border-bottom-color: transparent;
+  border-right-color: transparent;
+}
+
+.driver-popover.pillbug-tour .driver-popover-arrow-side-right {
+  border-top-color: transparent;
+  border-bottom-color: transparent;
+  border-left-color: transparent;
+}
+
+.driver-popover.pillbug-tour .driver-popover-arrow-side-top {
+  border-bottom-color: transparent;
+  border-left-color: transparent;
+  border-right-color: transparent;
+}
+
+.driver-popover.pillbug-tour .driver-popover-arrow-side-bottom {
+  border-top-color: transparent;
+  border-left-color: transparent;
+  border-right-color: transparent;
+}

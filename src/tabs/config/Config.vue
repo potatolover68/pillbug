@@ -25,9 +25,6 @@ import {
 import { clearPrefetch } from "../../wiki/prefetch";
 import {
   buildQueueSource,
-  catFiles,
-  catPages,
-  catSubcats,
   categoryTitle,
   linksFileUsage,
   linksIncludeRedirectTargets,
@@ -36,13 +33,13 @@ import {
   linksToTitle,
   linksTransclusions,
   linksWikilinks,
-  prefixStrict,
-  prefixText,
   searchQuery,
   selectedNamespaces,
   sourceKind,
   type SourceKind,
 } from "./generatorState";
+import { startConfigTour } from "./configTour";
+import { startGeneratorQueueTour } from "./generatorQueueTour";
 
 const queueDraft = ref(pageQueueText());
 const generateBusy = ref(false);
@@ -165,7 +162,19 @@ onMounted(() => {
 <template>
   <div class="config-main">
     <header class="header">
-      <h1 class="title">Config</h1>
+      <div class="title-row">
+        <h1 class="title">Config</h1>
+        <button
+          type="button"
+          class="tour-help"
+          data-tour="config-tour-help"
+          title="Config tour"
+          aria-label="Start Config tour"
+          @click="startConfigTour"
+        >
+          ?
+        </button>
+      </div>
       <p class="status">
         <template v-if="loggedIn">
           Logged in as <strong>{{ loggedInAs }}</strong>
@@ -176,9 +185,20 @@ onMounted(() => {
     </header>
 
     <div class="config-cols">
-      <section class="generator-col">
+      <section class="generator-col" data-tour="config-generator">
         <div class="col-header">
-          <span class="section-label">Generator</span>
+          <div class="section-title">
+            <span class="section-label">Generator</span>
+            <button
+              type="button"
+              class="tour-help tour-help-sm"
+              title="Generator & page queue tour"
+              aria-label="Start Generator and page queue tour"
+              @click="startGeneratorQueueTour"
+            >
+              ?
+            </button>
+          </div>
           <label class="process-ahead">
             <input v-model="processAhead" type="checkbox" />
             process ahead?
@@ -189,6 +209,7 @@ onMounted(() => {
           <div class="sources">
             <div
               class="source"
+              data-tour="config-gen-category"
               :class="{ active: sourceKind === 'category' }"
               @click="selectSource('category')"
             >
@@ -208,36 +229,11 @@ onMounted(() => {
                 :disabled="sourceKind !== 'category'"
                 placeholder="Category:Example"
               />
-              <div class="checks">
-                <label
-                  ><input
-                    v-model="catPages"
-                    type="checkbox"
-                    :disabled="sourceKind !== 'category'"
-                  />
-                  pages</label
-                >
-                <label
-                  ><input
-                    v-model="catSubcats"
-                    type="checkbox"
-                    :disabled="sourceKind !== 'category'"
-                  />
-                  subcategories</label
-                >
-                <label
-                  ><input
-                    v-model="catFiles"
-                    type="checkbox"
-                    :disabled="sourceKind !== 'category'"
-                  />
-                  files</label
-                >
-              </div>
             </div>
 
             <div
               class="source"
+              data-tour="config-gen-links-to"
               :class="{ active: sourceKind === 'linksTo' }"
               @click="selectSource('linksTo')"
             >
@@ -326,39 +322,7 @@ onMounted(() => {
 
             <div
               class="source"
-              :class="{ active: sourceKind === 'prefix' }"
-              @click="selectSource('prefix')"
-            >
-              <label class="source-head" @click.stop>
-                <input
-                  type="radio"
-                  name="source"
-                  :checked="sourceKind === 'prefix'"
-                  @change="selectSource('prefix')"
-                />
-                <span>Pages with prefix</span>
-              </label>
-              <label class="inline-field">
-                <span>Prefix:</span>
-                <input
-                  v-model="prefixText"
-                  class="panel-input"
-                  type="text"
-                  :disabled="sourceKind !== 'prefix'"
-                />
-              </label>
-              <label class="check-alone">
-                <input
-                  v-model="prefixStrict"
-                  type="checkbox"
-                  :disabled="sourceKind !== 'prefix'"
-                />
-                Strict prefix search
-              </label>
-            </div>
-
-            <div
-              class="source"
+              data-tour="config-gen-links-on"
               :class="{ active: sourceKind === 'linksOn' }"
               @click="selectSource('linksOn')"
             >
@@ -384,6 +348,7 @@ onMounted(() => {
 
             <div
               class="source"
+              data-tour="config-gen-search"
               :class="{ active: sourceKind === 'search' }"
               @click="selectSource('search')"
             >
@@ -412,7 +377,7 @@ onMounted(() => {
             </div>
           </div>
 
-          <div class="namespaces">
+          <div class="namespaces" data-tour="config-namespaces">
             <span class="section-label">Namespace</span>
             <div class="ns-list" :class="{ disabled: !loggedIn }">
               <button
@@ -445,7 +410,7 @@ onMounted(() => {
         </div>
       </section>
 
-      <section class="queue-col">
+      <section class="queue-col" data-tour="config-page-queue">
         <div class="queue-header">
           <span class="section-label">Page queue</span>
           <span class="muted">{{ queueCount }} page(s)</span>
@@ -462,7 +427,7 @@ onMounted(() => {
         </div>
       </section>
 
-      <section class="packs-col">
+      <section class="packs-col" data-tour="config-nodepacks">
         <div class="queue-header">
           <span class="section-label">Nodepacks</span>
           <span class="muted">{{ installedPacks.length }} pack(s)</span>
@@ -530,10 +495,45 @@ onMounted(() => {
   flex: none;
 }
 
+.title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
 .title {
-  margin: 0 0 8px;
+  margin: 0;
   font-size: 16px;
   font-weight: 600;
+}
+
+.tour-help {
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--accent, #f5a623);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.tour-help:hover {
+  color: #ffb84a;
+}
+
+.tour-help-sm {
+  font-size: 12px;
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
 }
 
 .status {

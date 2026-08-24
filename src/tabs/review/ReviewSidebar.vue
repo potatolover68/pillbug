@@ -58,12 +58,13 @@ async function onBatchToggle(): Promise<void> {
       id="edit-summary"
       v-model="editSummary"
       class="panel-textarea"
+      data-tour="review-summary"
       placeholder="Edit summary…"
       rows="2"
       :title="withKeybind('Edit summary', 'focusSummary')"
     />
 
-    <div class="minor-row">
+    <div class="minor-row" data-tour="review-edit-controls">
       <label
         class="minor-toggle"
         :title="withKeybind('Mark as minor edit', 'toggleMinor')"
@@ -109,75 +110,79 @@ async function onBatchToggle(): Promise<void> {
       </button>
     </div>
 
-    <div class="panel-actions">
-      <button
-        class="panel-btn"
-        type="button"
-        :disabled="
-          (!loggedIn && !batchRunning) ||
-          (!batchRunning && pageQueue.length === 0)
-        "
-        :title="
-          withKeybind(batchRunning ? 'Stop batch' : 'Start batch', 'startStopBatch')
-        "
-        @click="onBatchToggle"
-      >
-        {{ batchRunning ? "Stop" : "Start" }}
-      </button>
-      <button
-        class="panel-btn"
-        type="button"
-        :disabled="!canPrimaryAction"
-        :title="
-          withKeybind(
-            primaryAction === 'undo' ? 'Undo' : 'Save',
-            'save',
-          )
-        "
-        @click="onPrimaryAction"
-      >
-        {{ saveBusy ? "…" : primaryAction === "undo" ? "Undo" : "Save" }}
-      </button>
-      <button
-        class="panel-btn"
-        type="button"
-        :disabled="!canSkip"
-        :title="withKeybind('Skip', 'skip')"
-        @click="skipCurrent"
-      >
-        Skip
-      </button>
+    <div data-tour="review-actions">
+      <div class="panel-actions">
+        <button
+          class="panel-btn"
+          type="button"
+          :disabled="
+            (!loggedIn && !batchRunning) ||
+            (!batchRunning && pageQueue.length === 0)
+          "
+          :title="
+            withKeybind(
+              batchRunning ? 'Stop batch' : 'Start batch',
+              'startStopBatch',
+            )
+          "
+          @click="onBatchToggle"
+        >
+          {{ batchRunning ? "Stop" : "Start" }}
+        </button>
+        <button
+          class="panel-btn"
+          type="button"
+          :disabled="!canPrimaryAction"
+          :title="
+            withKeybind(primaryAction === 'undo' ? 'Undo' : 'Save', 'save')
+          "
+          @click="onPrimaryAction"
+        >
+          {{ saveBusy ? "…" : primaryAction === "undo" ? "Undo" : "Save" }}
+        </button>
+        <button
+          class="panel-btn"
+          type="button"
+          :disabled="!canSkip"
+          :title="withKeybind('Skip', 'skip')"
+          @click="skipCurrent"
+        >
+          Skip
+        </button>
+      </div>
+      <p class="panel-muted">{{ pageQueue.length }} left in queue</p>
     </div>
 
-    <p class="panel-muted">{{ pageQueue.length }} left in queue</p>
     <p v-if="saveError" class="panel-status error">{{ saveError }}</p>
     <p v-if="batchError" class="panel-status error">{{ batchError }}</p>
 
-    <ul v-if="reviewLogs.length > 0" class="log-list">
-      <li
-        v-for="entry in reviewLogs"
-        :key="entry.id"
-        class="log-item"
-        :class="{ selected: entry.id === selectedLogId }"
-      >
-        <button
-          class="log-button"
-          type="button"
-          @click="selectLogEntry(entry.id)"
+    <div class="log-region" data-tour="review-log">
+      <ul v-if="reviewLogs.length > 0" class="log-list">
+        <li
+          v-for="entry in reviewLogs"
+          :key="entry.id"
+          class="log-item"
+          :class="{ selected: entry.id === selectedLogId }"
         >
-          <span class="log-page">{{ entry.page }}</span>
-          <span class="log-meta">
-            <span class="chip" :data-status="logStatus(entry)">
-              {{ logStatus(entry) }}
+          <button
+            class="log-button"
+            type="button"
+            @click="selectLogEntry(entry.id)"
+          >
+            <span class="log-page">{{ entry.page }}</span>
+            <span class="log-meta">
+              <span class="chip" :data-status="logStatus(entry)">
+                {{ logStatus(entry) }}
+              </span>
+              <time class="log-time" :datetime="String(entry.timestamp)">
+                {{ formatTime(entry.timestamp) }}
+              </time>
             </span>
-            <time class="log-time" :datetime="String(entry.timestamp)">
-              {{ formatTime(entry.timestamp) }}
-            </time>
-          </span>
-        </button>
-      </li>
-    </ul>
-    <p v-else class="empty">No edits yet</p>
+          </button>
+        </li>
+      </ul>
+      <p v-else class="empty">No edits yet</p>
+    </div>
   </div>
 </template>
 
@@ -222,6 +227,13 @@ async function onBatchToggle(): Promise<void> {
   flex: none;
   width: auto;
   padding: 0 6px;
+}
+
+.log-region {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
 
 .log-list {

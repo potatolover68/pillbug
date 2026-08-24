@@ -51,9 +51,11 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="projects-block">
+  <div class="projects-block" data-tour="config-projects">
     <label class="panel-field">
-      <span class="panel-label">Save copy mode</span>
+      <span class="panel-label" data-tour="config-save-copy-mode"
+        >Save copy mode</span
+      >
       <select
         class="panel-input"
         :value="saveCopyMode"
