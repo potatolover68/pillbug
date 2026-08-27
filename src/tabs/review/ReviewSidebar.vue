@@ -162,7 +162,11 @@ async function onBatchToggle(): Promise<void> {
           v-for="entry in reviewLogs"
           :key="entry.id"
           class="log-item"
-          :class="{ selected: entry.id === selectedLogId }"
+          :class="{
+            selected:
+              entry.id === selectedLogId ||
+              (Boolean(entry.reviewing) && selectedLogId === null),
+          }"
         >
           <button
             class="log-button"
@@ -309,6 +313,11 @@ async function onBatchToggle(): Promise<void> {
 .chip[data-status="pending"] {
   color: #9ec5ff;
   background: rgba(66, 133, 244, 0.2);
+}
+
+.chip[data-status="reviewing"] {
+  color: #f5a623;
+  background: rgba(245, 166, 35, 0.22);
 }
 
 .log-time {

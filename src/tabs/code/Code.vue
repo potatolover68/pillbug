@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Diff } from "vue-diff";
 import "vue-diff/dist/index.css";
+import "../shared/diff.css";
 import { NodeViewer } from "@nodish/core";
 import { computed, useTemplateRef } from "vue";
 

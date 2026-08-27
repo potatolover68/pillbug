@@ -42,6 +42,12 @@ function isWikiProxyPath(pathname) {
   );
 }
 
+function isPublicAiProxyPath(pathname) {
+  return pathname === "/publicai" || pathname.startsWith("/publicai/");
+}
+
+const PUBLICAI_UPSTREAM = "https://api.publicai.co/v1";
+
 function rewriteSetCookie(header, secure) {
   let out = header.replace(/;\s*Domain=[^;]*/gi, "");
   if (!secure) {
@@ -146,6 +152,84 @@ async function proxyWiki(req, res) {
   res.end(buf);
 }
 
+/**
+ * Same-origin proxy for Public AI Inference Utility.
+ * /publicai/<rest> → https://api.publicai.co/v1/<rest>
+ * Client must supply Authorization + User-Agent (not injected here).
+ */
+async function proxyPublicAi(req, res) {
+  const incoming = new URL(req.url || "/", `http://${req.headers.host}`);
+  const rest = incoming.pathname.replace(/^\/publicai\/?/, "");
+  if (!rest || rest.includes("..")) {
+    reject(res, 400, "Invalid Public AI proxy path");
+    return;
+  }
+
+  const auth = req.headers.authorization;
+  if (typeof auth !== "string" || !auth.toLowerCase().startsWith("bearer ")) {
+    reject(res, 401, "Authorization: Bearer <api-key> is required");
+    return;
+  }
+
+  /** @type {Buffer | undefined} */
+  let body;
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    body = Buffer.concat(chunks);
+  }
+
+  const target = new URL(`${rest}${incoming.search}`, `${PUBLICAI_UPSTREAM}/`);
+
+  const headers = new Headers();
+  for (const [key, value] of Object.entries(req.headers)) {
+    if (value == null) continue;
+    const lower = key.toLowerCase();
+    if (HOP_BY_HOP.has(lower)) continue;
+    if (Array.isArray(value)) {
+      for (const item of value) headers.append(key, item);
+    } else {
+      headers.set(key, value);
+    }
+  }
+  headers.set("host", new URL(PUBLICAI_UPSTREAM).host);
+  headers.set("accept-encoding", "identity");
+  // Public AI asks for a User-Agent; browsers always send one to us, but ensure upstream has a value.
+  if (!headers.get("user-agent")?.trim()) {
+    headers.set("user-agent", "pillbug-ai/1.0");
+  }
+
+  /** @type {RequestInit} */
+  const init = {
+    method: req.method,
+    headers,
+    redirect: "manual",
+  };
+  if (body) init.body = body;
+
+  let upstream;
+  try {
+    upstream = await fetch(target, init);
+  } catch (err) {
+    reject(
+      res,
+      502,
+      `Public AI proxy error: ${err instanceof Error ? err.message : err}`,
+    );
+    return;
+  }
+
+  res.statusCode = upstream.status;
+  for (const [key, value] of upstream.headers.entries()) {
+    if (HOP_BY_HOP.has(key.toLowerCase())) continue;
+    res.setHeader(key, value);
+  }
+
+  const buf = Buffer.from(await upstream.arrayBuffer());
+  res.setHeader("content-length", String(buf.length));
+  res.end(buf);
+}
+
 const server = http.createServer(async (req, res) => {
   try {
     if (await handleOAuthHttp(req, res)) return;
@@ -183,6 +267,22 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (isPublicAiProxyPath(pathname)) {
+    if (req.method === "OPTIONS") {
+      res.statusCode = 204;
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader(
+        "Access-Control-Allow-Headers",
+        "Content-Type, Authorization, User-Agent",
+      );
+      res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+      res.end();
+      return;
+    }
+    await proxyPublicAi(req, res);
+    return;
+  }
+
   await handler(req, res, {
     public: DIST,
     directoryListing: false,
@@ -196,5 +296,7 @@ if (!fs.existsSync(DIST)) {
 }
 
 server.listen(PORT, () => {
-  console.log(`[pillbug] listening on :${PORT} (static + /w/* + oauth)`);
+  console.log(
+    `[pillbug] listening on :${PORT} (static + /w/* + /publicai/* + oauth)`,
+  );
 });

@@ -22,6 +22,8 @@ interface ReviewLogEntry {
   applied: boolean;
   skipped: boolean;
   undone: boolean;
+  /** Live queue item currently open for review (not yet saved/skipped). */
+  reviewing?: boolean;
   timestamp: number;
 }
 import moorea from "./moorea.json";
@@ -200,6 +202,52 @@ function findLogByPage(page: string): ReviewLogEntry | undefined {
   return reviewLogs.value.find((entry) => entry.page === page);
 }
 
+const REVIEWING_LOG_ID = "pillbug-review-live";
+
+function removeReviewingLogEntries(): void {
+  if (!reviewLogs.value.some((entry) => entry.reviewing)) return;
+  reviewLogs.value = reviewLogs.value.filter((entry) => !entry.reviewing);
+}
+
+/** Keep a REVIEWING row at the top of the log for the live queue item. */
+function syncReviewingLog(page: string, before: string, after: string): void {
+  const existing = reviewLogs.value.find(
+    (entry) => entry.id === REVIEWING_LOG_ID || entry.reviewing,
+  );
+  if (existing) {
+    existing.id = REVIEWING_LOG_ID;
+    existing.page = page;
+    existing.before = before;
+    existing.after = after;
+    existing.applied = false;
+    existing.skipped = false;
+    existing.undone = false;
+    existing.reviewing = true;
+    existing.timestamp = Date.now();
+    if (reviewLogs.value[0]?.id !== existing.id) {
+      reviewLogs.value = [
+        existing,
+        ...reviewLogs.value.filter((entry) => entry.id !== existing.id),
+      ];
+    }
+    return;
+  }
+  reviewLogs.value = [
+    {
+      id: REVIEWING_LOG_ID,
+      page,
+      before,
+      after,
+      applied: false,
+      skipped: false,
+      undone: false,
+      reviewing: true,
+      timestamp: Date.now(),
+    },
+    ...reviewLogs.value,
+  ];
+}
+
 function markApplied(page: string): void {
   const now = Date.now();
   const existing = findLogByPage(page);
@@ -210,8 +258,17 @@ function markApplied(page: string): void {
     existing.applied = true;
     existing.skipped = false;
     existing.undone = false;
+    existing.reviewing = false;
     existing.timestamp = now;
+    if (existing.id === REVIEWING_LOG_ID) {
+      existing.id = crypto.randomUUID();
+    }
     selectedLogId.value = existing.id;
+    // Ensure converted row sits at top among completed entries.
+    reviewLogs.value = [
+      existing,
+      ...reviewLogs.value.filter((entry) => entry.id !== existing.id),
+    ];
     return;
   }
 
@@ -223,6 +280,7 @@ function markApplied(page: string): void {
     applied: true,
     skipped: false,
     undone: false,
+    reviewing: false,
     timestamp: now,
   };
   reviewLogs.value.unshift(entry);
@@ -238,6 +296,7 @@ function setCurrentReview(page: string, before: string, after: string): void {
   clearManualEditState();
   clearPreviewState();
   saveError.value = null;
+  syncReviewingLog(page, before, after);
   maybeAutoSave();
 }
 
@@ -250,17 +309,25 @@ export function clearLogSelection(): void {
     currentPage.value = liveReview.page;
     currentBefore.value = liveReview.before;
     currentAfter.value = liveReview.after;
+    syncReviewingLog(liveReview.page, liveReview.before, liveReview.after);
     return;
   }
   // No stashed live review (e.g. opened a log after the queue was empty).
   currentPage.value = null;
   currentBefore.value = "";
   currentAfter.value = "";
+  removeReviewingLogEntries();
 }
 
 export function selectLogEntry(id: string): void {
   const entry = reviewLogs.value.find((row) => row.id === id);
   if (!entry) return;
+
+  // REVIEWING row represents the live queue item — return to it.
+  if (entry.reviewing) {
+    if (selectedLogId.value !== null) clearLogSelection();
+    return;
+  }
 
   if (selectedLogId.value === id) {
     clearLogSelection();
@@ -273,6 +340,12 @@ export function selectLogEntry(id: string): void {
       before: currentBefore.value,
       after: currentAfter.value,
     };
+    const reviewing = reviewLogs.value.find((row) => row.reviewing);
+    if (reviewing) {
+      reviewing.before = currentBefore.value;
+      reviewing.after = currentAfter.value;
+      reviewing.page = currentPage.value;
+    }
   }
 
   clearManualEditState();
@@ -373,9 +446,22 @@ function appendLogEntry(
     applied: entry.applied,
     skipped: entry.skipped,
     undone: entry.undone,
+    reviewing: entry.reviewing ?? false,
     timestamp: entry.timestamp ?? Date.now(),
   };
-  reviewLogs.value.unshift(row);
+  // Keep a live REVIEWING row above completed outcomes when present.
+  const reviewing = reviewLogs.value.find((e) => e.reviewing);
+  if (reviewing) {
+    reviewLogs.value = [
+      reviewing,
+      row,
+      ...reviewLogs.value.filter(
+        (e) => e.id !== reviewing.id && e.id !== row.id,
+      ),
+    ];
+  } else {
+    reviewLogs.value.unshift(row);
+  }
   return row;
 }
 
@@ -407,8 +493,16 @@ export function skipCurrent(): void {
     existing.applied = false;
     existing.skipped = true;
     existing.undone = false;
+    existing.reviewing = false;
     existing.timestamp = now;
+    if (existing.id === REVIEWING_LOG_ID) {
+      existing.id = crypto.randomUUID();
+    }
     selectedLogId.value = existing.id;
+    reviewLogs.value = [
+      existing,
+      ...reviewLogs.value.filter((entry) => entry.id !== existing.id),
+    ];
   } else {
     const entry: ReviewLogEntry = {
       id: crypto.randomUUID(),
@@ -418,6 +512,7 @@ export function skipCurrent(): void {
       applied: false,
       skipped: true,
       undone: false,
+      reviewing: false,
       timestamp: now,
     };
     reviewLogs.value.unshift(entry);
@@ -432,7 +527,8 @@ export function skipCurrent(): void {
 
 export function logStatus(
   entry: ReviewLogEntry,
-): "applied" | "skipped" | "undone" | "pending" {
+): "reviewing" | "applied" | "skipped" | "undone" | "pending" {
+  if (entry.reviewing) return "reviewing";
   if (entry.skipped) return "skipped";
   if (entry.undone) return "undone";
   if (entry.applied) return "applied";

@@ -17,6 +17,8 @@
     "src/**/*.tsx",
     "src/**/*.vue",
     "src/**/*.d.ts",
+    "packs/ai/src/**/*.ts",
+    "packs/ai/src/**/*.vue",
     "package.json",
     "changelogs/**/*.json",
     "changelogs/**/*.md"

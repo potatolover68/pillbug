@@ -1,6 +1,6 @@
 import { ref, shallowRef } from "vue";
 import { INPUT_TYPE, type NodeMap } from "@nodish/core";
-import type { WikiTitle } from "../../wiki/title";
+import { WikiTitle } from "../../wiki/title";
 import { map, skipMap } from "../shared/maps";
 
 export type CodeGraphKind = "process" | "skip";
@@ -69,4 +69,45 @@ export function setPreviewFromTest(titleObj: WikiTitle, content: string): void {
   previewTitle.value = titleObj;
   previewContent.value = content;
   syncPreviewInputs();
+}
+
+export type PreviewState = {
+  title: WikiTitle | null;
+  content: string | null;
+};
+
+export function capturePreviewState(): PreviewState {
+  return {
+    title: previewTitle.value,
+    content: previewContent.value,
+  };
+}
+
+export function restorePreviewState(state: PreviewState): void {
+  previewTitle.value = state.title;
+  previewContent.value = state.content;
+  clearPreviewInputsFromMaps();
+  syncPreviewInputs();
+}
+
+/**
+ * Seed Title/Content for tour demos. Title is skipped when siteinfo is
+ * unavailable (not logged in); Content is still written onto Input ports.
+ */
+export function setPreviewContentForTour(
+  content: string,
+  titleText = "Tour:Example",
+): void {
+  previewContent.value = content;
+  try {
+    previewTitle.value = new WikiTitle(titleText);
+  } catch {
+    previewTitle.value = null;
+  }
+  if (previewTitle.value) {
+    syncPreviewInputs();
+    return;
+  }
+  applyInputsToMap(map.value, { Content: content });
+  applyInputsToMap(skipMap.value, { Content: content });
 }

@@ -1,0 +1,13 @@
+.vue-diff-viewer .vue-diff-row .vue-diff-cell-removed {
+  background-color: #ff000012;
+}
+
+.vue-diff-viewer .vue-diff-row .vue-diff-cell-added {
+  background-color: #00ff8012;
+}
+.vue-diff-viewer .vue-diff-row .vue-diff-cell-removed span.modified {
+  background-color: #ff000045;
+}
+.vue-diff-viewer .vue-diff-row .vue-diff-cell-added span.modified {
+  background-color: #00ff8045;
+}

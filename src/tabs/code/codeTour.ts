@@ -3,6 +3,7 @@ import {
   tourStepsFromDefs,
   type TourStepDef,
 } from "../shared/tour";
+import { beginCodeTourDemo, endCodeTourDemo } from "./codeTourDemo";
 import { activeCodeGraph } from "./state";
 
 const STEP_DEFS: TourStepDef[] = [
@@ -17,14 +18,14 @@ const STEP_DEFS: TourStepDef[] = [
     element: "[data-tour='code-graph-toggle']",
     title: "Process / Skip",
     description:
-      "There are two graphs you can edit: the process graph and the skip graph. Only the process graph is required; the skip graph is optional.",
+      "There are two graphs you can edit: the process graph and the skip graph. Only the process graph is required; the skip graph is optional. This tour loads temporary example graphs.",
     side: "left",
   },
   {
     element: "[data-tour='code-graph-toggle']",
     title: "Process graph",
     description:
-      "The process graph is what transforms the page text. It will always receive the page's title and text, and it should output the transformed text. If the output is the same as the input, the page is skipped.",
+      "The process graph is what transforms the page text. It will always receive the page's title and text, and it should output the transformed text. If the output is the same as the input, the page is skipped. The example renames an Infobox parameter, then runs RegEx Typo Fixing (RETF).",
     side: "left",
     onHighlightStarted: () => {
       activeCodeGraph.value = "process";
@@ -34,7 +35,7 @@ const STEP_DEFS: TourStepDef[] = [
     element: "[data-tour='code-graph-toggle']",
     title: "Skip graph",
     description:
-      "The skip graph is an optional filter that can prevent the process graph from running. It will always receive the page's title and text, and it should output a boolean. If the output is true, the page is skipped. Useful for edge cases the queue generator can't catch. The skip graph should always be faster than the process graph, as otherwise it would not be of much use",
+      "The skip graph is an optional filter that can prevent the process graph from running. It will always receive the page's title and text, and it should output a boolean. If the output is true, the page is skipped. The example skips pages that already contain {{Under construction}}.",
     side: "left",
     onHighlightStarted: () => {
       activeCodeGraph.value = "skip";
@@ -44,8 +45,11 @@ const STEP_DEFS: TourStepDef[] = [
     element: "[data-tour='code-canvas']",
     title: "Think in transformations",
     description:
-      "This is a dataflow editor: each node is one small change to the data flowing through it. For wiki work, start from Content (the page text), apply nodes that find/replace, strip, or reshape it, and wire the final string into ContentAfter.",
+      "This is a dataflow editor: each node is one small change. The demo chains Rename Parameter into RegEx Typo Fixing.",
     side: "left",
+    onHighlightStarted: () => {
+      activeCodeGraph.value = "process";
+    },
   },
   {
     element: "[data-tour='code-canvas']",
@@ -78,5 +82,11 @@ const STEP_DEFS: TourStepDef[] = [
 ];
 
 export function startCodeTour(): void {
-  startPillbugTour(tourStepsFromDefs(STEP_DEFS));
+  beginCodeTourDemo();
+  activeCodeGraph.value = "process";
+  startPillbugTour(tourStepsFromDefs(STEP_DEFS), {
+    onDestroyed: () => {
+      endCodeTourDemo();
+    },
+  });
 }

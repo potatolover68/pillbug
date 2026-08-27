@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Diff } from "vue-diff";
 import "vue-diff/dist/index.css";
+import "../shared/diff.css";
 import { computed, nextTick, ref, useTemplateRef, watch } from "vue";
 import DiffLineDiscard from "../shared/DiffLineDiscard.vue";
 import DiffOverviewRuler from "../shared/DiffOverviewRuler.vue";
