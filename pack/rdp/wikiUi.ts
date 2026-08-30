@@ -25,6 +25,21 @@ type JQueryLike = {
 
 const FIXINDENT = true;
 
+const RDP_SUMMARY = "removed deprecated parameters using [[User:MSK/rdp|rdp]]";
+
+function touchEditSummary(): void {
+  const el = document.getElementById("wpSummary") as
+    | HTMLInputElement
+    | HTMLTextAreaElement
+    | null;
+  if (!el) return;
+  const current = el.value.trim();
+  if (current.includes("[[User:MSK/rdp|rdp]]")) return;
+  el.value = current ? `${current} · ${RDP_SUMMARY}` : RDP_SUMMARY;
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+  el.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
 function uniqueTemplateNames(content: string): string[] {
   const names = new Set<string>();
   let i = 0;
@@ -109,6 +124,7 @@ async function runToolbar(): Promise<void> {
         if (title == null || !title.trim()) return;
         try {
           const changed = await runOne(title.trim());
+          if (changed) touchEditSummary();
           mw.notify(
             changed ? "Deprecated parameters replaced." : "No changes.",
             { type: changed ? "success" : "info" },
@@ -163,7 +179,10 @@ async function runToolbar(): Promise<void> {
               if (!errors.includes(msg)) errors.push(msg);
             }
           }
-          if (any) setText(text);
+          if (any) {
+            setText(text);
+            touchEditSummary();
+          }
           if (errors.length) {
             mw.notify(
               `Done with ${errors.length} error(s). First: ${errors[0]}`,
