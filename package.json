@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc -b && vite build",
+    "build:rdp": "vite build --config vite.rdp.config.ts",
     "start": "node server.mjs",
     "preview": "vite preview"
   },
