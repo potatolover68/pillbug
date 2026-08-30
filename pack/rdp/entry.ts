@@ -4,6 +4,7 @@
  */
 
 import {
+  // @ts-ignore
   clearDeprecatedParamsCache,
   replaceDeprecatedParametersInContent,
 } from "../deprecatedParams.ts";

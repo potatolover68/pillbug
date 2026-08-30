@@ -9,6 +9,7 @@ export default defineConfig({
     outDir: "dist-rdp",
     emptyOutDir: true,
     codeSplitting: false,
+    minify: true,
     lib: {
       entry: path.resolve(rootDir, "pack/rdp/entry.ts"),
       formats: ["es"],
@@ -16,8 +17,8 @@ export default defineConfig({
     },
     rollupOptions: {
       output: {
-        banner:
-          "/* pillbug - GPL-3.0-or-later - https://github.com/potatolover68/pillbug */",
+        banner: `// {{Wikipedia:USync|repo=https://github.com/potatolover68/pillbug|ref=refs/heads/rdp|path=index.js}}
+        /* pillbug - GPL-3.0-or-later - https://github.com/potatolover68/pillbug */`,
       },
     },
   },
