@@ -8,17 +8,18 @@ export default defineConfig({
   build: {
     outDir: "dist-rdp",
     emptyOutDir: true,
-    codeSplitting: false,
     minify: true,
     lib: {
       entry: path.resolve(rootDir, "pack/rdp/entry.ts"),
-      formats: ["es"],
+      name: "pillbugRdp",
+      formats: ["iife"],
       fileName: () => "index.js",
     },
     rollupOptions: {
       output: {
+        extend: true,
         banner: `// {{Wikipedia:USync|repo=https://github.com/potatolover68/pillbug|ref=refs/heads/rdp|path=index.js}}
-        /* pillbug - GPL-3.0-or-later - https://github.com/potatolover68/pillbug */`,
+/* pillbug - GPL-3.0-or-later - https://github.com/potatolover68/pillbug */`,
       },
     },
   },

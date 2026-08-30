@@ -272,7 +272,9 @@ export function setTemplateParameter(
   return { ...t, params, pristine: false };
 }
 
-/** Rename a named parameter key (positional keys like "1" are not renamed). */
+/** Rename a named parameter key (positional keys like "1" are not renamed).
+ * Matching is case-sensitive — MW template args are (`Name` ≠ `name`).
+ */
 export function renameTemplateParameterKey(
   t: Template,
   oldParameter: string,
@@ -280,11 +282,11 @@ export function renameTemplateParameterKey(
 ): Template {
   const oldN = oldParameter.trim();
   const newN = newParameter.trim();
-  if (!oldN || !newN || oldN.toLowerCase() === newN.toLowerCase()) return t;
+  if (!oldN || !newN || oldN === newN) return t;
   let changed = false;
   const params = t.params.map((p) => {
     if (p.kind !== "named") return p;
-    if (p.name.toLowerCase() !== oldN.toLowerCase()) return p;
+    if (p.name !== oldN) return p;
     changed = true;
     return { ...p, name: newN };
   });
@@ -409,6 +411,42 @@ export function findTemplates(content: string): TemplateHit[] {
   return hits;
 }
 
+/**
+ * Find every `{{...}}` including nested ones (e.g. `#invoke:…` inside `{{main other|…}}`).
+ * Skips `{{{` params. Does not strip nowiki/comments.
+ */
+export function findAllTemplates(content: string): TemplateHit[] {
+  const hits: TemplateHit[] = [];
+  const stack: number[] = [];
+  let i = 0;
+  while (i < content.length - 1) {
+    if (content[i] === "{" && content[i + 1] === "{") {
+      if (content[i + 2] === "{") {
+        i += 3;
+        continue;
+      }
+      stack.push(i);
+      i += 2;
+      continue;
+    }
+    if (content[i] === "}" && content[i + 1] === "}" && stack.length > 0) {
+      const start = stack.pop()!;
+      const end = i + 2;
+      const raw = content.slice(start, end);
+      const inner = raw.slice(2, -2);
+      const nameMatch = /^([^|{}\n]+)/.exec(inner);
+      const name = (nameMatch?.[1] ?? "").trim();
+      if (name) {
+        hits.push({ raw, start, end, name, inner });
+      }
+      i += 2;
+      continue;
+    }
+    i += 1;
+  }
+  return hits;
+}
+
 const CATEGORY_RE = /\[\[\s*[Cc]ategory\s*:\s*([^\]|#]+)(?:\|[^\]]*)?\]\]/g;
 
 export function findCategories(content: string): CategoryHit[] {
@@ -446,7 +484,9 @@ export function contentHasTemplate(
   return findTemplates(content).some((t) => templateNamesMatch(t.name, want));
 }
 
-/** First-level `|name=` / `| name =` renames inside a template inner body. */
+/** First-level `|name=` / `| name =` renames inside a template inner body.
+ * Parameter names are matched case-sensitively (MW args are).
+ */
 export function renameFirstLevelParams(
   inner: string,
   oldParam: string,
@@ -462,7 +502,7 @@ export function renameFirstLevelParams(
     const m = /^(\s*)([^=|]+?)(\s*)=(.*)$/s.exec(part);
     if (!m) return part;
     const [, ws1, name, ws2, rest] = m;
-    if (name!.trim().toLowerCase() !== oldN.toLowerCase()) return part;
+    if (name!.trim() !== oldN) return part;
     return `${ws1}${newN}${ws2}=${rest}`;
   });
   return renamed.join("|");
@@ -471,6 +511,12 @@ export function renameFirstLevelParams(
 export function isStubTemplateName(name: string): boolean {
   const n = templateName(name);
   return /\bstub$/i.test(n.trim());
+}
+
+/** True if the template name looks like an infobox ({{Infobox …}} / …infobox…). */
+export function isInfoboxTemplateName(name: string): boolean {
+  const n = normName(templateName(name));
+  return n.startsWith("infobox") || n.includes("infobox");
 }
 
 export function writeTemplateName(name: string): string {

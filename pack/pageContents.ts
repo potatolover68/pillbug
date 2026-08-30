@@ -7,6 +7,7 @@
 export type PageContentsResult = {
   exists: boolean;
   content: string;
+  resolvedTitle?: string;
 };
 
 export type PageContentsFetcher = (title: string) => PageContentsResult;

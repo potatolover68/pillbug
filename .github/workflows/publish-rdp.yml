@@ -3,7 +3,7 @@ name: Publish RDP
 on:
   push:
     branches:
-      - main
+      - master
     paths:
       - "pack/**"
       - "vite.rdp.config.ts"

@@ -3,7 +3,7 @@ import { fetchPageContents, fetchPageContentsAsync } from "./pageContents.ts";
 import { WikiTitle } from "../src/wiki/title.ts";
 import {
   applyTemplatesToContent,
-  findTemplates,
+  findAllTemplates,
   hitToTemplate,
   indentTemplate,
   removeTemplateParameter,
@@ -26,17 +26,23 @@ const EMPTY_RULES: DeprecatedParamsRules = {
 };
 
 /** Session cache for sync (nodish) path. */
-const rulesCache = new Map<string, DeprecatedParamsRules>();
+type ResolvedRules = {
+  rules: DeprecatedParamsRules;
+  /** Invocation names to rewrite (requested + redirect targets). */
+  matchNames: string[];
+};
+
+const rulesCache = new Map<string, ResolvedRules>();
 
 /** In-memory L1 for async path (TTL-aware). */
-type TimedRules = { rules: DeprecatedParamsRules; cachedAt: number };
+type TimedRules = ResolvedRules & { cachedAt: number };
 const asyncMemoryCache = new Map<string, TimedRules>();
 
 /** IndexedDB rules cache TTL. */
 export const RULES_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 const IDB_NAME = "pillbug-rdp";
-const IDB_VERSION = 1;
+const IDB_VERSION = 2;
 const IDB_STORE = "deprecated-rules";
 
 const META_PARAMS = new Set(["_category", "preview", "ignoreblank"]);
@@ -89,13 +95,26 @@ async function idbGetRules(key: string): Promise<TimedRules | null> {
       req.onsuccess = () => {
         db.close();
         const row = req.result as
-          | { key: string; rules: DeprecatedParamsRules; cachedAt: number }
+          | {
+              key: string;
+              rules: DeprecatedParamsRules;
+              matchNames?: string[];
+              cachedAt: number;
+            }
           | undefined;
         if (!row || !row.rules || typeof row.cachedAt !== "number") {
           resolve(null);
           return;
         }
-        resolve({ rules: row.rules, cachedAt: row.cachedAt });
+        const matchNames =
+          Array.isArray(row.matchNames) && row.matchNames.length > 0
+            ? row.matchNames
+            : [templateName(row.key)];
+        resolve({
+          rules: row.rules,
+          matchNames,
+          cachedAt: row.cachedAt,
+        });
       };
     } catch {
       try {
@@ -336,7 +355,10 @@ export function parseDeprecatedRulesFromTemplateSource(
   source: string,
 ): DeprecatedParamsRules {
   const masked = maskProtectedRegions(source);
-  const hit = findTemplates(masked).find((t) => isDeprecatedInvokeName(t.name));
+  // Nested: many templates wrap the invoke in {{main other|…}} / similar.
+  const hit = findAllTemplates(masked).find((t) =>
+    isDeprecatedInvokeName(t.name),
+  );
   if (!hit) return { ...EMPTY_RULES, renames: [], remove: [], regexps: [] };
   const template = hitToTemplate({
     ...hit,
@@ -366,47 +388,137 @@ export function resolveTemplatePageTitle(title: unknown): string {
   }
 }
 
-/** Sync rules load (nodish nodes — session Map only). */
-export function getDeprecatedParamsRules(
-  title: unknown,
-): DeprecatedParamsRules {
+/** `#REDIRECT [[Target]]` (and soft `#redirect [[…]]`). */
+const REDIRECT_RE =
+  /^#\s*redirect\s*:?\s*\[\[([^\]|#]+)(?:\|[^\]]*)?\]\]/i;
+
+export function parseRedirectTarget(content: string): string | null {
+  const m = REDIRECT_RE.exec(content.trim());
+  if (!m) return null;
+  return m[1]!.replace(/_/g, " ").trim() || null;
+}
+
+const MAX_REDIRECTS = 5;
+
+type LoadedTemplate = {
+  source: string;
+  matchNames: string[];
+};
+
+function addMatchName(names: Set<string>, title: string): void {
+  const n = templateName(title);
+  if (n) names.add(n);
+}
+
+/** Fetch template wikitext, following redirects; collect all names along the chain. */
+function loadTemplateSourceSync(titleKey: string): LoadedTemplate {
+  const matchNames = new Set<string>();
+  addMatchName(matchNames, titleKey);
+  let current = titleKey;
+  for (let i = 0; i < MAX_REDIRECTS; i++) {
+    const page = fetchPageContents(current);
+    if (!page.exists) {
+      throw new Error(`Template page not found: ${current}`);
+    }
+    if (page.resolvedTitle) {
+      addMatchName(matchNames, page.resolvedTitle);
+      if (!parseRedirectTarget(page.content)) {
+        return { source: page.content, matchNames: [...matchNames] };
+      }
+      current = page.resolvedTitle;
+    }
+    const target = parseRedirectTarget(page.content);
+    if (!target) {
+      return { source: page.content, matchNames: [...matchNames] };
+    }
+    current = resolveTemplatePageTitle(target);
+    addMatchName(matchNames, current);
+  }
+  throw new Error(`Too many template redirects starting at ${titleKey}`);
+}
+
+async function loadTemplateSourceAsync(titleKey: string): Promise<LoadedTemplate> {
+  const matchNames = new Set<string>();
+  addMatchName(matchNames, titleKey);
+  let current = titleKey;
+  for (let i = 0; i < MAX_REDIRECTS; i++) {
+    const page = await fetchPageContentsAsync(current);
+    if (!page.exists) {
+      throw new Error(`Template page not found: ${current}`);
+    }
+    if (page.resolvedTitle) {
+      addMatchName(matchNames, page.resolvedTitle);
+      // API already returned target content when redirects=1 — no #REDIRECT left.
+      if (!parseRedirectTarget(page.content)) {
+        return { source: page.content, matchNames: [...matchNames] };
+      }
+      current = page.resolvedTitle;
+    }
+    const target = parseRedirectTarget(page.content);
+    if (!target) {
+      return { source: page.content, matchNames: [...matchNames] };
+    }
+    current = resolveTemplatePageTitle(target);
+    addMatchName(matchNames, current);
+  }
+  throw new Error(`Too many template redirects starting at ${titleKey}`);
+}
+
+function resolveDeprecatedParamsSync(title: unknown): ResolvedRules {
   const key = resolveTemplatePageTitle(title);
   const cached = rulesCache.get(key);
   if (cached) return cached;
 
-  const page = fetchPageContents(key);
-  if (!page.exists) {
-    throw new Error(`Template page not found: ${key}`);
-  }
-  const rules = parseDeprecatedRulesFromTemplateSource(page.content);
-  rulesCache.set(key, rules);
-  return rules;
+  const loaded = loadTemplateSourceSync(key);
+  const rules = parseDeprecatedRulesFromTemplateSource(loaded.source);
+  const resolved: ResolvedRules = {
+    rules,
+    matchNames: loaded.matchNames,
+  };
+  rulesCache.set(key, resolved);
+  return resolved;
 }
 
-/** Async rules load: memory → IndexedDB (1h TTL) → network. */
-export async function getDeprecatedParamsRulesAsync(
+async function resolveDeprecatedParamsAsync(
   title: unknown,
-): Promise<DeprecatedParamsRules> {
+): Promise<ResolvedRules> {
   const key = resolveTemplatePageTitle(title);
 
   const mem = asyncMemoryCache.get(key);
-  if (mem && isFresh(mem.cachedAt)) return mem.rules;
+  if (mem && isFresh(mem.cachedAt)) {
+    return { rules: mem.rules, matchNames: mem.matchNames };
+  }
 
   const fromIdb = await idbGetRules(key);
   if (fromIdb && isFresh(fromIdb.cachedAt)) {
     asyncMemoryCache.set(key, fromIdb);
-    return fromIdb.rules;
+    return { rules: fromIdb.rules, matchNames: fromIdb.matchNames };
   }
 
-  const page = await fetchPageContentsAsync(key);
-  if (!page.exists) {
-    throw new Error(`Template page not found: ${key}`);
-  }
-  const rules = parseDeprecatedRulesFromTemplateSource(page.content);
-  const entry: TimedRules = { rules, cachedAt: Date.now() };
+  const loaded = await loadTemplateSourceAsync(key);
+  const rules = parseDeprecatedRulesFromTemplateSource(loaded.source);
+  const entry: TimedRules = {
+    rules,
+    matchNames: loaded.matchNames,
+    cachedAt: Date.now(),
+  };
   asyncMemoryCache.set(key, entry);
   void idbSetRules(key, entry);
-  return rules;
+  return { rules: entry.rules, matchNames: entry.matchNames };
+}
+
+/** Sync rules load (nodish nodes — session Map only). */
+export function getDeprecatedParamsRules(
+  title: unknown,
+): DeprecatedParamsRules {
+  return resolveDeprecatedParamsSync(title).rules;
+}
+
+/** Async rules load: memory → IndexedDB (1h TTL) → network (follows redirects). */
+export async function getDeprecatedParamsRulesAsync(
+  title: unknown,
+): Promise<DeprecatedParamsRules> {
+  return (await resolveDeprecatedParamsAsync(title)).rules;
 }
 
 export function clearDeprecatedParamsCache(): void {
@@ -450,14 +562,15 @@ function applyRulesToTemplate(
 }
 
 function applyRulesToContent(
-  title: unknown,
+  matchNames: string[],
   content: string,
   fixindent: boolean,
   rules: DeprecatedParamsRules,
 ): string {
-  const want = templateName(title);
   const all = templatesFromContent(content);
-  const targets = all.filter((t) => templateNamesMatch(t.name, want));
+  const targets = all.filter((t) =>
+    matchNames.some((want) => templateNamesMatch(t.name, want)),
+  );
   if (targets.length === 0) return content;
 
   const hasWork =
@@ -482,12 +595,8 @@ export function replaceDeprecatedParametersInContent(
   content: string,
   fixindent: boolean,
 ): string {
-  return applyRulesToContent(
-    title,
-    content,
-    fixindent,
-    getDeprecatedParamsRules(title),
-  );
+  const { rules, matchNames } = resolveDeprecatedParamsSync(title);
+  return applyRulesToContent(matchNames, content, fixindent, rules);
 }
 
 /** Async apply — for RDP / userscripts (IndexedDB-backed rules cache). */
@@ -496,6 +605,6 @@ export async function replaceDeprecatedParametersInContentAsync(
   content: string,
   fixindent: boolean,
 ): Promise<string> {
-  const rules = await getDeprecatedParamsRulesAsync(title);
-  return applyRulesToContent(title, content, fixindent, rules);
+  const { rules, matchNames } = await resolveDeprecatedParamsAsync(title);
+  return applyRulesToContent(matchNames, content, fixindent, rules);
 }

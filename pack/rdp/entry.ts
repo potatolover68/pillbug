@@ -1,11 +1,3 @@
-/**
- * Standalone entry for Replace Deprecated Parameters (userscript / ESM import).
- * Does not depend on nodish or the pillbug app shell.
- *
- * Default path is async `fetch` + IndexedDB rules cache (1h TTL).
- * Sync XHR fetcher remains available for sync helpers / nodish parity.
- */
-
 import {
   replaceDeprecatedParametersInContent,
   replaceDeprecatedParametersInContentAsync,
@@ -15,6 +7,7 @@ import {
   setPageContentsFetcherAsync,
   type PageContentsResult,
 } from "../pageContents.ts";
+import { startWikiUi } from "./wikiUi.ts";
 
 export {
   clearDeprecatedParamsCache,
@@ -35,13 +28,17 @@ type Revision = {
 };
 
 type QueryPage = {
+  title?: string;
   missing?: boolean | "";
   invalid?: boolean | "";
   revisions?: Revision[];
 };
 
 type QueryResponse = {
-  query?: { pages?: Record<string, QueryPage> };
+  query?: {
+    pages?: Record<string, QueryPage>;
+    redirects?: Array<{ from: string; to: string }>;
+  };
   error?: { code?: string; info?: string };
 };
 
@@ -57,6 +54,17 @@ function revisionWikitext(page: QueryPage): string | null {
   }
   if (typeof rev["*"] === "string") return rev["*"];
   return null;
+}
+
+function resolvedTitleFromQuery(
+  data: QueryResponse,
+  page: QueryPage,
+): string | undefined {
+  const redirects = data.query?.redirects;
+  if (redirects && redirects.length > 0) {
+    return redirects[redirects.length - 1]!.to;
+  }
+  return typeof page.title === "string" ? page.title : undefined;
 }
 
 function parseQueryResponse(raw: string): PageContentsResult {
@@ -80,11 +88,12 @@ function parseQueryResponse(raw: string): PageContentsResult {
     if (page.missing !== undefined || page.invalid !== undefined) {
       return { exists: false, content: "" };
     }
+    const resolvedTitle = resolvedTitleFromQuery(data, page);
     const content = revisionWikitext(page);
     if (content != null) {
-      return { exists: true, content };
+      return { exists: true, content, resolvedTitle };
     }
-    return { exists: true, content: "" };
+    return { exists: true, content: "", resolvedTitle };
   }
 
   return { exists: false, content: "" };
@@ -97,6 +106,7 @@ function buildApiUrl(title: string): string {
     prop: "revisions",
     rvprop: "content",
     rvslots: "main",
+    redirects: "1",
     titles: title,
   });
   const sep = apiRoot.includes("?") ? "&" : "?";
@@ -210,3 +220,5 @@ export async function executeAsync(inputs: {
 }
 
 installDefaultFetchers();
+
+startWikiUi();

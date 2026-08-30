@@ -2,7 +2,10 @@
  * Blocking wiki page read for nodish execute (sync-only).
  * Uses synchronous XHR through the same-origin `/w/api.php` proxy.
  */
-import { setPageContentsFetcher } from "../../pack/pageContents";
+import {
+  setPageContentsFetcher,
+  type PageContentsResult,
+} from "../../pack/pageContents";
 import { DEFAULT_WIKI_ORIGIN, WIKI_ORIGIN_HEADER } from "./defaults";
 import { wikiOrigin } from "./session";
 
@@ -12,13 +15,17 @@ type Revision = {
 };
 
 type QueryPage = {
+  title?: string;
   missing?: boolean | "";
   invalid?: boolean | "";
   revisions?: Revision[];
 };
 
 type QueryResponse = {
-  query?: { pages?: Record<string, QueryPage> };
+  query?: {
+    pages?: Record<string, QueryPage>;
+    redirects?: Array<{ from: string; to: string }>;
+  };
   error?: { code?: string; info?: string };
 };
 
@@ -42,10 +49,18 @@ function revisionWikitext(page: QueryPage): string | null {
   return null;
 }
 
-function fetchPageContentsSync(title: string): {
-  exists: boolean;
-  content: string;
-} {
+function resolvedTitleFromQuery(
+  data: QueryResponse,
+  page: QueryPage,
+): string | undefined {
+  const redirects = data.query?.redirects;
+  if (redirects && redirects.length > 0) {
+    return redirects[redirects.length - 1]!.to;
+  }
+  return typeof page.title === "string" ? page.title : undefined;
+}
+
+function fetchPageContentsSync(title: string): PageContentsResult {
   const trimmed = title.trim();
   if (!trimmed) {
     return { exists: false, content: "" };
@@ -57,6 +72,7 @@ function fetchPageContentsSync(title: string): {
     prop: "revisions",
     rvprop: "content",
     rvslots: "main",
+    redirects: "1",
     titles: trimmed,
   });
   const url = `/w/api.php?${params.toString()}`;
@@ -99,12 +115,12 @@ function fetchPageContentsSync(title: string): {
     if (page.missing !== undefined || page.invalid !== undefined) {
       return { exists: false, content: "" };
     }
+    const resolvedTitle = resolvedTitleFromQuery(data, page);
     const content = revisionWikitext(page);
     if (content != null) {
-      return { exists: true, content };
+      return { exists: true, content, resolvedTitle };
     }
-    // Exists but no readable revision (e.g. restricted).
-    return { exists: true, content: "" };
+    return { exists: true, content: "", resolvedTitle };
   }
 
   return { exists: false, content: "" };
