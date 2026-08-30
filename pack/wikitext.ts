@@ -48,22 +48,35 @@ export type Template = {
 export function splitFirstLevelPipes(inner: string): string[] {
   const parts: string[] = [];
   let buf = "";
-  let depth = 0;
+  let tplDepth = 0;
+  let linkDepth = 0;
   for (let i = 0; i < inner.length; i++) {
     const ch = inner[i]!;
     if (ch === "{" && inner[i + 1] === "{") {
-      depth += 1;
+      tplDepth += 1;
       buf += "{{";
       i += 1;
       continue;
     }
     if (ch === "}" && inner[i + 1] === "}") {
-      depth = Math.max(0, depth - 1);
+      tplDepth = Math.max(0, tplDepth - 1);
       buf += "}}";
       i += 1;
       continue;
     }
-    if (ch === "|" && depth === 0) {
+    if (ch === "[" && inner[i + 1] === "[") {
+      linkDepth += 1;
+      buf += "[[";
+      i += 1;
+      continue;
+    }
+    if (ch === "]" && inner[i + 1] === "]") {
+      linkDepth = Math.max(0, linkDepth - 1);
+      buf += "]]";
+      i += 1;
+      continue;
+    }
+    if (ch === "|" && tplDepth === 0 && linkDepth === 0) {
       parts.push(buf);
       buf = "";
       continue;
