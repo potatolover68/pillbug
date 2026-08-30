@@ -9,6 +9,7 @@ import DiffOverviewRuler from "../shared/DiffOverviewRuler.vue";
 import { map, skipMap } from "../shared/maps";
 import {
   activeCodeGraph,
+  liveEvaluation,
   testAfter,
   testBefore,
   testError,
@@ -55,7 +56,7 @@ const diffPaneRef = useTemplateRef<HTMLElement>("diffPane");
       >
         ?
       </button>
-      <NodeViewer :map="activeMap" />
+      <NodeViewer :map="activeMap" :auto-eval="liveEvaluation" />
     </div>
   </div>
 </template>

@@ -7,6 +7,9 @@ export type CodeGraphKind = "process" | "skip";
 
 export const activeCodeGraph = ref<CodeGraphKind>("process");
 
+/** When true, NodeViewer re-evaluates the graph on every change. */
+export const liveEvaluation = ref(true);
+
 export const testPageTitle = ref("");
 export const testBefore = ref("");
 export const testAfter = ref("");

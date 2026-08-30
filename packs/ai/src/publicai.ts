@@ -1,3 +1,5 @@
+import { matchOption, normalizeNewlines } from "./newlines";
+
 /**
  * Sync Public AI chat completions via same-origin `/publicai/*` proxy.
  * Graph execute is sync-only, so this uses blocking XHR (blocks the UI).
@@ -57,7 +59,7 @@ export function publicAiChatCompletionsSync(options: {
   if (content == null) {
     throw new Error("Public AI response missing assistant content");
   }
-  return { content };
+  return { content: normalizeNewlines(content) };
 }
 
 function extractAssistantContent(payload: unknown): string | null {
@@ -77,7 +79,7 @@ export function parseChoiceJson(
   raw: string,
   options: string[],
 ): { choice: string; reasoning: string } {
-  const trimmed = raw.trim();
+  const trimmed = normalizeNewlines(raw).trim();
   const fenced = /^```(?:json)?\s*([\s\S]*?)```$/i.exec(trimmed);
   const jsonText = (fenced?.[1] ?? trimmed).trim();
 
@@ -96,18 +98,23 @@ export function parseChoiceJson(
   if (typeof parsed !== "object" || parsed === null) {
     throw new Error("Model JSON was not an object");
   }
-  const choice = (parsed as { choice?: unknown }).choice;
-  const reasoning = (parsed as { reasoning?: unknown }).reasoning;
-  if (typeof choice !== "string" || !choice) {
+  const choiceRaw = (parsed as { choice?: unknown }).choice;
+  const reasoningRaw = (parsed as { reasoning?: unknown }).reasoning;
+  if (typeof choiceRaw !== "string" || !choiceRaw) {
     throw new Error("Model JSON missing string choice");
   }
-  if (typeof reasoning !== "string") {
+  if (typeof reasoningRaw !== "string") {
     throw new Error("Model JSON missing string reasoning");
   }
-  if (!options.includes(choice)) {
+
+  const choice = matchOption(choiceRaw, options);
+  if (choice == null) {
     throw new Error(
-      `Model choice ${JSON.stringify(choice)} is not one of the provided options`,
+      `Model choice ${JSON.stringify(choiceRaw)} is not one of the provided options`,
     );
   }
-  return { choice, reasoning };
+  return {
+    choice,
+    reasoning: normalizeNewlines(reasoningRaw),
+  };
 }

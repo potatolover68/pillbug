@@ -34,6 +34,7 @@ import {
   writeTemplateName,
   type Template,
 } from "./wikitext.ts";
+import { replaceDeprecatedParametersInContent } from "./deprecatedParams.ts";
 import { fetchPageContents } from "./pageContents.ts";
 import { applyAwbTypos } from "./typos.ts";
 
@@ -735,6 +736,34 @@ const renameParameter: NodeSpec = {
   },
 };
 
+const replaceDeprecatedParameters: NodeSpec = {
+  typeId: "wiki/replace-deprecated-parameters",
+  displayName: "Replace Deprecated Parameters",
+  description:
+    "Fetch and cache a template's #invoke:Check for deprecated parameters rules, then apply the relevant fixes to parameters to that template.",
+  color: MW_COLOR,
+  group: GROUP_PARAMS,
+  inputs: {
+    title: titleOrString,
+    content: { type: "string" },
+    fixindent: {
+      type: "boolean",
+      userOnly: true,
+      defaultValue: false,
+    },
+  },
+  outputs: {
+    contentAfter: { type: "string" },
+  },
+  execute: (inputs) => ({
+    contentAfter: replaceDeprecatedParametersInContent(
+      inputs.title,
+      requireContent(inputs.content),
+      inputs.fixindent === true,
+    ),
+  }),
+};
+
 const addCategory: NodeSpec = {
   typeId: "wiki/add-category",
   displayName: "Add Category",
@@ -1241,6 +1270,7 @@ export const mediaWikiNodes: NodeSpecRegistry = {
   [contentHasTemplateNode.typeId]: contentHasTemplateNode,
   [renameTemplate.typeId]: renameTemplate,
   [renameParameter.typeId]: renameParameter,
+  [replaceDeprecatedParameters.typeId]: replaceDeprecatedParameters,
   [addCategory.typeId]: addCategory,
   [removeCategory.typeId]: removeCategory,
   [replaceCategory.typeId]: replaceCategory,

@@ -3,6 +3,7 @@ import { getPage, loggedIn } from "../../wiki/session";
 import { runGraphsForPage } from "../../wiki/runPage";
 import {
   activeCodeGraph,
+  liveEvaluation,
   setPreviewFromTest,
   testAfter,
   testBefore,
@@ -91,6 +92,14 @@ function setGraph(kind: CodeGraphKind): void {
       </button>
     </div>
 
+    <label
+      class="live-eval-toggle"
+      title="Re-evaluate the graph whenever nodes or wires change. Can help find bugs; however, it can also slow down the UI."
+    >
+      <input v-model="liveEvaluation" type="checkbox" />
+      <span>live evaluation</span>
+    </label>
+
     <label class="panel-field" data-tour="code-test-page">
       <span class="panel-label">Test page</span>
       <input
@@ -139,5 +148,21 @@ function setGraph(kind: CodeGraphKind): void {
   outline: 1px solid var(--accent);
   outline-offset: -1px;
   background: rgba(245, 166, 35, 0.08);
+}
+
+.live-eval-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--panel-muted);
+  line-height: var(--row-h);
+  cursor: pointer;
+  user-select: none;
+}
+
+.live-eval-toggle input {
+  margin: 0;
+  accent-color: var(--accent);
 }
 </style>

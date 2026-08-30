@@ -1,4 +1,5 @@
 import type { NodeSpec, NodeSpecRegistry } from "@nodish/core";
+import { realizeNewlines } from "./newlines";
 import { parseChoiceJson, publicAiChatCompletionsSync } from "./publicai";
 import {
   AI_CLIENT_TYPE,
@@ -8,7 +9,7 @@ import {
 } from "./types";
 
 const AI_COLOR = "#6c8cff";
-const GROUP = ["AI", "Public AI"];
+const TEXT_COLOR = "#8ab4f8";
 const DEFAULT_MODEL = "swiss-ai/apertus-v1.5-8b";
 const MIN_N = 2;
 const MAX_N = 8;
@@ -31,7 +32,7 @@ const publicAiClient: NodeSpec = {
   description:
     "Wrap a Public AI API key + model as an ai/client. The key uses a password field in the UI, but is still stored in the graph/project like other port values. As such, treat projects with keys as secrets.",
   color: AI_COLOR,
-  group: GROUP,
+  group: ["AI", "Public AI"],
   inputs: {
     apiKey: {
       type: AI_SECRET_TYPE,
@@ -71,7 +72,7 @@ const choose: NodeSpec = {
   description:
     "Ask Public AI to pick one of N option strings given a prompt and data. Returns the chosen string and reasoning. Uses sync XHR via /publicai (blocks the UI while waiting). Experimental.",
   color: AI_COLOR,
-  group: GROUP,
+  group: ["AI"],
   inputs: {
     client: { type: AI_CLIENT_TYPE },
     prompt: {
@@ -142,18 +143,19 @@ const choose: NodeSpec = {
       options.push(opt);
     }
 
+    // JSON.stringify so embedded newlines are unambiguous for the model.
     const optionList = options
       .map((o, i) => `${i + 1}. ${JSON.stringify(o)}`)
       .join("\n");
     const system = `You classify input into exactly one of the provided options.
 Respond with JSON only, no markdown, of the form:
 {"reasoning":"<brief reason>", "choice":"<exact option string>"}
-The "choice" value must be copied exactly from one of the options.`;
+The "choice" value must match one option exactly. If an option contains newlines, put real newlines inside the JSON string (or \\n escapes)—do not change the option text.`;
 
     const user = [
       prompt ? `Instructions:\n${prompt}` : "Instructions: (none)",
       "",
-      "Options:",
+      "Options (JSON strings — copy choice from these):",
       optionList,
       "",
       "Data:",
@@ -173,7 +175,30 @@ The "choice" value must be copied exactly from one of the options.`;
   },
 };
 
+const realizeNewlinesNode: NodeSpec = {
+  typeId: "ai/realize-newlines",
+  displayName: "Realize newlines",
+  description:
+    "Convert literal escape sequences (\\n, \\r\\n, \\r) in the text into real newlines. Useful when a model or source emits backslash-n instead of line breaks.",
+  color: TEXT_COLOR,
+  group: ["AI", "Text"],
+  inputs: {
+    text: {
+      type: "string",
+      defaultValue: "",
+      customProps: { rows: 3 },
+    },
+  },
+  outputs: {
+    text: { type: "string" },
+  },
+  execute: (inputs) => ({
+    text: realizeNewlines(asString(inputs.text)),
+  }),
+};
+
 export const aiNodes: NodeSpecRegistry = {
   [publicAiClient.typeId]: publicAiClient,
   [choose.typeId]: choose,
+  [realizeNewlinesNode.typeId]: realizeNewlinesNode,
 };
