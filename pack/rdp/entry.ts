@@ -1,23 +1,33 @@
 /**
  * Standalone entry for Replace Deprecated Parameters (userscript / ESM import).
  * Does not depend on nodish or the pillbug app shell.
+ *
+ * Default path is async `fetch` + IndexedDB rules cache (1h TTL).
+ * Sync XHR fetcher remains available for sync helpers / nodish parity.
  */
 
 import {
-  // @ts-ignore
-  clearDeprecatedParamsCache,
   replaceDeprecatedParametersInContent,
+  replaceDeprecatedParametersInContentAsync,
 } from "../deprecatedParams.ts";
 import {
   setPageContentsFetcher,
+  setPageContentsFetcherAsync,
   type PageContentsResult,
 } from "../pageContents.ts";
 
 export {
   clearDeprecatedParamsCache,
+  clearDeprecatedParamsCacheAsync,
+  getDeprecatedParamsRulesAsync,
   replaceDeprecatedParametersInContent,
+  replaceDeprecatedParametersInContentAsync,
+  RULES_CACHE_TTL_MS,
 } from "../deprecatedParams.ts";
-export { setPageContentsFetcher } from "../pageContents.ts";
+export {
+  setPageContentsFetcher,
+  setPageContentsFetcherAsync,
+} from "../pageContents.ts";
 
 type Revision = {
   slots?: { main?: { ["*"]?: string; content?: string } };
@@ -49,43 +59,10 @@ function revisionWikitext(page: QueryPage): string | null {
   return null;
 }
 
-function fetchPageContentsSync(title: string): PageContentsResult {
-  const trimmed = title.trim();
-  if (!trimmed) {
-    return { exists: false, content: "" };
-  }
-
-  const params = new URLSearchParams({
-    action: "query",
-    format: "json",
-    prop: "revisions",
-    rvprop: "content",
-    rvslots: "main",
-    titles: trimmed,
-  });
-  const sep = apiRoot.includes("?") ? "&" : "?";
-  const url = `${apiRoot}${sep}${params.toString()}`;
-  // @ts-ignore
-  const xhr = new XMLHttpRequest();
-  xhr.open("GET", url, false);
-  xhr.withCredentials = true;
-  try {
-    xhr.send(null);
-  } catch (err) {
-    throw new Error(
-      err instanceof Error
-        ? `Failed to fetch page: ${err.message}`
-        : "Failed to fetch page",
-    );
-  }
-
-  if (xhr.status < 200 || xhr.status >= 300) {
-    throw new Error(`Failed to fetch page (HTTP ${xhr.status})`);
-  }
-
+function parseQueryResponse(raw: string): PageContentsResult {
   let data: QueryResponse;
   try {
-    data = JSON.parse(xhr.responseText) as QueryResponse;
+    data = JSON.parse(raw) as QueryResponse;
   } catch {
     throw new Error("Failed to parse wiki API response");
   }
@@ -113,15 +90,86 @@ function fetchPageContentsSync(title: string): PageContentsResult {
   return { exists: false, content: "" };
 }
 
-function installDefaultFetcher(): void {
-  setPageContentsFetcher(fetchPageContentsSync);
+function buildApiUrl(title: string): string {
+  const params = new URLSearchParams({
+    action: "query",
+    format: "json",
+    prop: "revisions",
+    rvprop: "content",
+    rvslots: "main",
+    titles: title,
+  });
+  const sep = apiRoot.includes("?") ? "&" : "?";
+  return `${apiRoot}${sep}${params.toString()}`;
 }
 
+/** Sync XHR — for sync `replaceDeprecatedParametersInContent` / nodish-style use. */
+function fetchPageContentsSync(title: string): PageContentsResult {
+  const trimmed = title.trim();
+  if (!trimmed) {
+    return { exists: false, content: "" };
+  }
+
+  const url = buildApiUrl(trimmed);
+  const xhr = new XMLHttpRequest();
+  xhr.open("GET", url, false);
+  xhr.withCredentials = true;
+  try {
+    xhr.send(null);
+  } catch (err) {
+    throw new Error(
+      err instanceof Error
+        ? `Failed to fetch page: ${err.message}`
+        : "Failed to fetch page",
+    );
+  }
+
+  if (xhr.status < 200 || xhr.status >= 300) {
+    throw new Error(`Failed to fetch page (HTTP ${xhr.status})`);
+  }
+
+  return parseQueryResponse(xhr.responseText);
+}
+
+/** Async fetch — default for RDP userscripts. */
+async function fetchPageContentsViaFetch(
+  title: string,
+): Promise<PageContentsResult> {
+  const trimmed = title.trim();
+  if (!trimmed) {
+    return { exists: false, content: "" };
+  }
+
+  const url = buildApiUrl(trimmed);
+  let res: Response;
+  try {
+    res = await fetch(url, { credentials: "same-origin" });
+  } catch (err) {
+    throw new Error(
+      err instanceof Error
+        ? `Failed to fetch page: ${err.message}`
+        : "Failed to fetch page",
+    );
+  }
+
+  if (!res.ok) {
+    throw new Error(`Failed to fetch page (HTTP ${res.status})`);
+  }
+
+  return parseQueryResponse(await res.text());
+}
+
+function installDefaultFetchers(): void {
+  setPageContentsFetcher(fetchPageContentsSync);
+  setPageContentsFetcherAsync(fetchPageContentsViaFetch);
+}
+
+/** Update MediaWiki API endpoint (default `/w/api.php`) and re-install fetchers. */
 export function configure(options: { apiRoot?: string } = {}): void {
   if (typeof options.apiRoot === "string" && options.apiRoot.trim()) {
     apiRoot = options.apiRoot.trim();
   }
-  installDefaultFetcher();
+  installDefaultFetchers();
 }
 
 function requireContent(value: unknown): string {
@@ -131,6 +179,7 @@ function requireContent(value: unknown): string {
   return value;
 }
 
+/** Sync execute (blocks on XHR). Prefer {@link executeAsync} in userscripts. */
 export function execute(inputs: {
   title: unknown;
   content: unknown;
@@ -145,4 +194,19 @@ export function execute(inputs: {
   };
 }
 
-installDefaultFetcher();
+/** Async execute — uses fetch + IndexedDB rules cache. */
+export async function executeAsync(inputs: {
+  title: unknown;
+  content: unknown;
+  fixindent?: unknown;
+}): Promise<{ contentAfter: string }> {
+  return {
+    contentAfter: await replaceDeprecatedParametersInContentAsync(
+      inputs.title,
+      requireContent(inputs.content),
+      inputs.fixindent === true,
+    ),
+  };
+}
+
+installDefaultFetchers();

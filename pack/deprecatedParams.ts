@@ -1,5 +1,5 @@
 import { asString, isWikiTitle, normName, templateName } from "./coerce.ts";
-import { fetchPageContents } from "./pageContents.ts";
+import { fetchPageContents, fetchPageContentsAsync } from "./pageContents.ts";
 import { WikiTitle } from "../src/wiki/title.ts";
 import {
   applyTemplatesToContent,
@@ -25,8 +25,19 @@ const EMPTY_RULES: DeprecatedParamsRules = {
   regexps: [],
 };
 
-/** Session cache keyed by resolved prefixed template title. */
+/** Session cache for sync (nodish) path. */
 const rulesCache = new Map<string, DeprecatedParamsRules>();
+
+/** In-memory L1 for async path (TTL-aware). */
+type TimedRules = { rules: DeprecatedParamsRules; cachedAt: number };
+const asyncMemoryCache = new Map<string, TimedRules>();
+
+/** IndexedDB rules cache TTL. */
+export const RULES_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+const IDB_NAME = "pillbug-rdp";
+const IDB_VERSION = 1;
+const IDB_STORE = "deprecated-rules";
 
 const META_PARAMS = new Set(["_category", "preview", "ignoreblank"]);
 const REGEXP_KEY = /^_regexp[1-9][0-9]*$/i;
@@ -38,6 +49,115 @@ const INVOKE_NAMES = [
 function isDeprecatedInvokeName(name: string): boolean {
   const n = normName(name);
   return INVOKE_NAMES.some((want) => normName(want) === n);
+}
+
+function isFresh(cachedAt: number): boolean {
+  return Date.now() - cachedAt < RULES_CACHE_TTL_MS;
+}
+
+function openRulesDb(): Promise<IDBDatabase | null> {
+  if (typeof indexedDB === "undefined") return Promise.resolve(null);
+  return new Promise((resolve) => {
+    try {
+      const req = indexedDB.open(IDB_NAME, IDB_VERSION);
+      req.onerror = () => resolve(null);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(IDB_STORE)) {
+          db.createObjectStore(IDB_STORE, { keyPath: "key" });
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+async function idbGetRules(key: string): Promise<TimedRules | null> {
+  const db = await openRulesDb();
+  if (!db) return null;
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(IDB_STORE, "readonly");
+      const store = tx.objectStore(IDB_STORE);
+      const req = store.get(key);
+      req.onerror = () => {
+        db.close();
+        resolve(null);
+      };
+      req.onsuccess = () => {
+        db.close();
+        const row = req.result as
+          | { key: string; rules: DeprecatedParamsRules; cachedAt: number }
+          | undefined;
+        if (!row || !row.rules || typeof row.cachedAt !== "number") {
+          resolve(null);
+          return;
+        }
+        resolve({ rules: row.rules, cachedAt: row.cachedAt });
+      };
+    } catch {
+      try {
+        db.close();
+      } catch {
+        /* ignore */
+      }
+      resolve(null);
+    }
+  });
+}
+
+async function idbSetRules(key: string, entry: TimedRules): Promise<void> {
+  const db = await openRulesDb();
+  if (!db) return;
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(IDB_STORE, "readwrite");
+      tx.oncomplete = () => {
+        db.close();
+        resolve();
+      };
+      tx.onerror = () => {
+        db.close();
+        resolve();
+      };
+      tx.objectStore(IDB_STORE).put({ key, ...entry });
+    } catch {
+      try {
+        db.close();
+      } catch {
+        /* ignore */
+      }
+      resolve();
+    }
+  });
+}
+
+async function idbClearRules(): Promise<void> {
+  const db = await openRulesDb();
+  if (!db) return;
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(IDB_STORE, "readwrite");
+      tx.oncomplete = () => {
+        db.close();
+        resolve();
+      };
+      tx.onerror = () => {
+        db.close();
+        resolve();
+      };
+      tx.objectStore(IDB_STORE).clear();
+    } catch {
+      try {
+        db.close();
+      } catch {
+        /* ignore */
+      }
+      resolve();
+    }
+  });
 }
 
 /** Blank out nowiki/noinclude stuff so invokes inside are ignored. */
@@ -89,7 +209,6 @@ export function luaPatternToJsSource(pattern: string): string {
           out += "\\" + next;
           break;
         default:
-          // %- etc.: treat as escaped literal
           out += next.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
           break;
       }
@@ -106,13 +225,11 @@ export function luaPatternToJsSource(pattern: string): string {
       continue;
     }
     if (ch === "-") {
-      // Lua `-` after a class is non-greedy; as literal outside class, escape.
       out += "\\-";
       i += 1;
       continue;
     }
     if (ch === "[") {
-      // Character class: copy until ], handling % escapes lightly.
       let j = i + 1;
       let cls = "[";
       while (j < pattern.length) {
@@ -139,7 +256,6 @@ export function luaPatternToJsSource(pattern: string): string {
       i = j;
       continue;
     }
-    // Literal — escape JS regex metacharacters
     if (/[\\^$|{}]/.test(ch)) {
       out += "\\" + ch;
     } else {
@@ -154,7 +270,6 @@ function luaReplacementToJs(replacement: string): string {
   return replacement.replace(/%([1-9])/g, (_m, n: string) => `$${n}`);
 }
 
-/** Match full string against Lua pattern (anchored like the module's ^pat$). */
 export function luaMatch(subject: string, pattern: string): boolean {
   try {
     const re = new RegExp(`^(?:${luaPatternToJsSource(pattern)})$`);
@@ -164,7 +279,6 @@ export function luaMatch(subject: string, pattern: string): boolean {
   }
 }
 
-/** gsub equivalent for a single full-string match (module uses match then gsub). */
 export function luaGsub(
   subject: string,
   pattern: string,
@@ -224,8 +338,6 @@ export function parseDeprecatedRulesFromTemplateSource(
   const masked = maskProtectedRegions(source);
   const hit = findTemplates(masked).find((t) => isDeprecatedInvokeName(t.name));
   if (!hit) return { ...EMPTY_RULES, renames: [], remove: [], regexps: [] };
-  // Parse from original source span (masking only affects search offsets —
-  // same length so start/end still align).
   const template = hitToTemplate({
     ...hit,
     raw: source.slice(hit.start, hit.end),
@@ -234,10 +346,6 @@ export function parseDeprecatedRulesFromTemplateSource(
   return parseDeprecatedInvokeInner(template.params);
 }
 
-/**
- * Resolve title for fetching the template page.
- * Strings default to Template namespace; wiki/title objects are used as-is.
- */
 export function resolveTemplatePageTitle(title: unknown): string {
   if (isWikiTitle(title)) {
     return title.getPrefixedText();
@@ -251,7 +359,6 @@ export function resolveTemplatePageTitle(title: unknown): string {
     }
     return new WikiTitle(raw).getPrefixedText();
   } catch {
-    // Siteinfo may be unloaded; fall back to implying Template: for bare names.
     if (/^Template\s*:/i.test(raw) || /^[^:\s]+:/.test(raw)) {
       return raw.replace(/_/g, " ");
     }
@@ -259,6 +366,7 @@ export function resolveTemplatePageTitle(title: unknown): string {
   }
 }
 
+/** Sync rules load (nodish nodes — session Map only). */
 export function getDeprecatedParamsRules(
   title: unknown,
 ): DeprecatedParamsRules {
@@ -275,9 +383,42 @@ export function getDeprecatedParamsRules(
   return rules;
 }
 
-/** Clear the session cache (tests / hot reload). */
+/** Async rules load: memory → IndexedDB (1h TTL) → network. */
+export async function getDeprecatedParamsRulesAsync(
+  title: unknown,
+): Promise<DeprecatedParamsRules> {
+  const key = resolveTemplatePageTitle(title);
+
+  const mem = asyncMemoryCache.get(key);
+  if (mem && isFresh(mem.cachedAt)) return mem.rules;
+
+  const fromIdb = await idbGetRules(key);
+  if (fromIdb && isFresh(fromIdb.cachedAt)) {
+    asyncMemoryCache.set(key, fromIdb);
+    return fromIdb.rules;
+  }
+
+  const page = await fetchPageContentsAsync(key);
+  if (!page.exists) {
+    throw new Error(`Template page not found: ${key}`);
+  }
+  const rules = parseDeprecatedRulesFromTemplateSource(page.content);
+  const entry: TimedRules = { rules, cachedAt: Date.now() };
+  asyncMemoryCache.set(key, entry);
+  void idbSetRules(key, entry);
+  return rules;
+}
+
 export function clearDeprecatedParamsCache(): void {
   rulesCache.clear();
+  asyncMemoryCache.clear();
+  void idbClearRules();
+}
+
+export async function clearDeprecatedParamsCacheAsync(): Promise<void> {
+  rulesCache.clear();
+  asyncMemoryCache.clear();
+  await idbClearRules();
 }
 
 function applyRulesToTemplate(
@@ -308,15 +449,12 @@ function applyRulesToTemplate(
   return next;
 }
 
-/**
- * Apply cached deprecate rules for `title` to matching invocations in `content`.
- */
-export function replaceDeprecatedParametersInContent(
+function applyRulesToContent(
   title: unknown,
   content: string,
   fixindent: boolean,
+  rules: DeprecatedParamsRules,
 ): string {
-  const rules = getDeprecatedParamsRules(title);
   const want = templateName(title);
   const all = templatesFromContent(content);
   const targets = all.filter((t) => templateNamesMatch(t.name, want));
@@ -336,4 +474,28 @@ export function replaceDeprecatedParametersInContent(
   });
 
   return applyTemplatesToContent(content, updated);
+}
+
+/** Sync apply — for nodish nodes. */
+export function replaceDeprecatedParametersInContent(
+  title: unknown,
+  content: string,
+  fixindent: boolean,
+): string {
+  return applyRulesToContent(
+    title,
+    content,
+    fixindent,
+    getDeprecatedParamsRules(title),
+  );
+}
+
+/** Async apply — for RDP / userscripts (IndexedDB-backed rules cache). */
+export async function replaceDeprecatedParametersInContentAsync(
+  title: unknown,
+  content: string,
+  fixindent: boolean,
+): Promise<string> {
+  const rules = await getDeprecatedParamsRulesAsync(title);
+  return applyRulesToContent(title, content, fixindent, rules);
 }
