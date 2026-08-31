@@ -2,7 +2,11 @@ import {
   getDeprecatedParamsRulesAsync,
   replaceDeprecatedParametersInContentAsync,
 } from "../deprecatedParams.ts";
-import { isInfoboxTemplateName } from "../wikitext.ts";
+import {
+  collectTemplateNames,
+  isInfoboxTemplateName,
+  templatesFromContent,
+} from "../wikitext.ts";
 
 declare const mw: {
   config: { get: (key: string) => unknown };
@@ -38,47 +42,6 @@ function touchEditSummary(): void {
   el.value = current ? `${current} · ${RDP_SUMMARY}` : RDP_SUMMARY;
   el.dispatchEvent(new Event("input", { bubbles: true }));
   el.dispatchEvent(new Event("change", { bubbles: true }));
-}
-
-function uniqueTemplateNames(content: string): string[] {
-  const names = new Set<string>();
-  let i = 0;
-  while (i < content.length - 1) {
-    if (content[i] === "{" && content[i + 1] === "{") {
-      if (content[i + 2] === "{") {
-        i += 3;
-        continue;
-      }
-      let depth = 2;
-      const start = i;
-      i += 2;
-      while (i < content.length && depth > 0) {
-        if (content[i] === "{" && content[i + 1] === "{") {
-          depth += 2;
-          i += 2;
-          continue;
-        }
-        if (content[i] === "}" && content[i + 1] === "}") {
-          depth -= 2;
-          i += 2;
-          continue;
-        }
-        i += 1;
-      }
-      if (depth === 0) {
-        const inner = content.slice(start + 2, i - 2);
-        const m = /^([^|{}\n]+)/.exec(inner);
-        let name = (m?.[1] ?? "").trim().replace(/_/g, " ");
-        name = name.replace(/^Template\s*:\s*/i, "");
-        if (name && !name.startsWith("#")) {
-          names.add(name);
-        }
-      }
-      continue;
-    }
-    i += 1;
-  }
-  return [...names];
 }
 
 async function runToolbar(): Promise<void> {
@@ -145,7 +108,7 @@ async function runToolbar(): Promise<void> {
       .on("click", async () => {
         try {
           let text = getText();
-          const names = uniqueTemplateNames(text);
+          const names = collectTemplateNames(templatesFromContent(text));
           if (!names.length) {
             mw.notify("No templates found.", { type: "info" });
             return;

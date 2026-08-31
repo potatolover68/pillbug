@@ -9,27 +9,31 @@ import {
 } from "./Templates.ts";
 import {
   applyTemplatesToContent,
+  assertRootTemplateList,
   contentHasCategory,
   contentHasTemplate,
   filterTemplatesByName,
   findCategories,
   findTemplates,
+  findTemplatesByNameDeep,
   findWikilinks,
   formatWikilink,
   getNthTemplate,
   getTemplateParameter,
+  indentTemplate,
   indentTemplates,
   isStubTemplateName,
   joinTemplates,
+  mapAllTemplates,
+  mapTemplatesByName,
+  mapTemplatesInContent,
   removeTemplateParameter,
   removeTemplatesFromContent,
-  renameFirstLevelParams,
   renameTemplateParameterKey,
   setTemplateName,
   setTemplateParameter,
   sliceTemplates,
   templateHasParameter,
-  templateNamesMatch,
   templatesFromContent,
   writeTemplateName,
   type Template,
@@ -86,21 +90,7 @@ function renameTemplateInContent(
 ): string {
   const want = templateName(oldT);
   const next = writeTemplateName(templateName(newT));
-  const hits = findTemplates(content).filter(
-    (t) => normName(templateName(t.name)) === normName(want),
-  );
-  return replaceSpans(
-    content,
-    hits.map((t) => {
-      const pipe = t.inner.indexOf("|");
-      const rest = pipe === -1 ? "" : t.inner.slice(pipe);
-      const namePart = pipe === -1 ? t.inner : t.inner.slice(0, pipe);
-      const leading = /^\s*/.exec(namePart)?.[0] ?? "";
-      const trailing = pipe === -1 ? (/\s*$/.exec(namePart)?.[0] ?? "") : "";
-      const inner = `${leading}${next}${trailing}${rest}`;
-      return { start: t.start, end: t.end, text: `{{${inner}}}` };
-    }),
-  );
+  return mapTemplatesInContent(content, want, (t) => setTemplateName(t, next));
 }
 
 function renameTemplatesCollection(
@@ -109,11 +99,7 @@ function renameTemplatesCollection(
   newT: unknown,
 ): Template[] {
   const want = templateName(oldT);
-  return templates.map((t) =>
-    normName(templateName(t.name)) === normName(want)
-      ? setTemplateName(t, newT)
-      : t,
-  );
+  return mapTemplatesByName(templates, want, (t) => setTemplateName(t, newT));
 }
 
 function renameTemplateParamInContent(
@@ -125,16 +111,8 @@ function renameTemplateParamInContent(
   const want = templateName(template);
   const oldP = asString(oldParam);
   const newP = asString(newParam);
-  const hits = findTemplates(content).filter(
-    (t) => normName(templateName(t.name)) === normName(want),
-  );
-  return replaceSpans(
-    content,
-    hits.map((t) => ({
-      start: t.start,
-      end: t.end,
-      text: `{{${renameFirstLevelParams(t.inner, oldP, newP)}}}`,
-    })),
+  return mapTemplatesInContent(content, want, (t) =>
+    renameTemplateParameterKey(t, oldP, newP),
   );
 }
 
@@ -645,7 +623,7 @@ const contentHasTemplateNode: NodeSpec = {
   typeId: "wiki/content-has-template",
   displayName: "Content Has Template",
   description:
-    "True if wikitext contains a {{…}} invocation matching the template name.",
+    "True if wikitext contains a {{…}} invocation matching the template name (searches nested templates).",
   color: MW_COLOR,
   group: GROUP_FIND,
   inputs: {
@@ -664,7 +642,7 @@ const renameTemplate: NodeSpec = {
   typeId: "wiki/rename-template",
   displayName: "Rename Template",
   description:
-    "Rename matching {{Old}} → {{New}}. Accepts content (returns content) or Templates (returns Templates). Template: prefix is omitted in the new name.",
+    "Rename matching {{Old}} → {{New}} at any depth. Accepts content (returns content) or Templates (returns Templates).",
   color: MW_COLOR,
   group: GROUP_EDIT,
   inputs: {
@@ -700,7 +678,7 @@ const renameParameter: NodeSpec = {
   typeId: "wiki/rename-parameter",
   displayName: "Rename Parameter",
   description:
-    "Rename a named parameter key. On content, only invocations matching template name are updated. On Templates, matching names are updated (empty template name → all).",
+    "Rename a named parameter key (deep). On content, only invocations matching template name are updated. On Templates, empty template name → all nodes.",
   color: MW_COLOR,
   group: GROUP_PARAMS,
   inputs: {
@@ -727,11 +705,17 @@ const renameParameter: NodeSpec = {
     const filterName = asString(inputs.template).trim();
     const oldP = asString(inputs.oldParameter);
     const newP = asString(inputs.newParameter);
+    if (!filterName) {
+      return {
+        result: mapAllTemplates(source.templates, (t) =>
+          renameTemplateParameterKey(t, oldP, newP),
+        ),
+      };
+    }
     return {
-      result: source.templates.map((t) => {
-        if (filterName && !templateNamesMatch(t.name, filterName)) return t;
-        return renameTemplateParameterKey(t, oldP, newP);
-      }),
+      result: mapTemplatesByName(source.templates, filterName, (t) =>
+        renameTemplateParameterKey(t, oldP, newP),
+      ),
     };
   },
 };
@@ -931,7 +915,7 @@ const parseTemplates: NodeSpec = {
   typeId: "wiki/parse-templates",
   displayName: "Parse Templates From Content",
   description:
-    "Parse all top-level {{…}} invocations in wikitext into a Templates collection.",
+    "Parse top-level {{…}} invocations into a Templates forest (nested templates live inside param values).",
   color: MW_COLOR,
   group: GROUP_FIND,
   inputs: {
@@ -949,7 +933,7 @@ const findTemplatesByNameInContent: NodeSpec = {
   typeId: "wiki/find-templates-by-name",
   displayName: "Find Templates By Name In Content",
   description:
-    "Parse content and keep only invocations matching the template name.",
+    "Deep-find matching {{…}} nodes (including nested). For edits prefer map-templates-by-name; Apply expects root spans only.",
   color: MW_COLOR,
   group: GROUP_FIND,
   inputs: {
@@ -960,8 +944,8 @@ const findTemplatesByNameInContent: NodeSpec = {
     result: { type: TEMPLATES_TYPE },
   },
   execute: (inputs) => ({
-    result: filterTemplatesByName(
-      templatesFromContent(requireContent(inputs.content)),
+    result: findTemplatesByNameDeep(
+      requireContent(inputs.content),
       inputs.name,
     ),
   }),
@@ -1207,7 +1191,7 @@ const applyTemplates: NodeSpec = {
   typeId: "wiki/apply-templates",
   displayName: "Apply Templates To Content",
   description:
-    "Write a Templates collection back into content by replacing each original span.",
+    "Write root Templates back into content (recursive serialize). Errors if the list mixes nested spans with their parents.",
   color: MW_COLOR,
   group: GROUP_EDIT,
   inputs: {
@@ -1225,10 +1209,46 @@ const applyTemplates: NodeSpec = {
   }),
 };
 
+const mapTemplatesByNameNode: NodeSpec = {
+  typeId: "wiki/map-templates-by-name",
+  displayName: "Map Templates By Name",
+  description:
+    "Deep-walk content or a Templates forest and optionally indent matching names. Prefer this over find-nested + apply.",
+  color: MW_COLOR,
+  group: GROUP_EDIT,
+  inputs: {
+    source: contentOrTemplates,
+    name: titleOrString,
+    indent: {
+      type: "boolean",
+      userOnly: true,
+      defaultValue: false,
+    },
+  },
+  outputs: {
+    result: contentOrTemplates,
+  },
+  execute: (inputs) => {
+    const source = asContentOrTemplates(inputs.source);
+    const name = templateName(inputs.name);
+    const doIndent = inputs.indent === true;
+    const fn = (t: Template): Template => (doIndent ? indentTemplate(t) : t);
+    if (source.kind === "content") {
+      return {
+        result: mapTemplatesInContent(source.content, name, fn),
+      };
+    }
+    return {
+      result: mapTemplatesByName(source.templates, name, fn),
+    };
+  },
+};
+
 const deleteTemplatesFromContent: NodeSpec = {
   typeId: "wiki/delete-templates-from-content",
   displayName: "Delete Templates From Content",
-  description: "Remove the wikitext spans of the given Templates from content.",
+  description:
+    "Remove root template spans from content. Nested-only lists are rejected.",
   color: MW_COLOR,
   group: GROUP_EDIT,
   inputs: {
@@ -1238,12 +1258,16 @@ const deleteTemplatesFromContent: NodeSpec = {
   outputs: {
     content: { type: "string" },
   },
-  execute: (inputs) => ({
-    content: removeTemplatesFromContent(
-      requireContent(inputs.content),
-      requireTemplates(inputs.templates),
-    ),
-  }),
+  execute: (inputs) => {
+    const templates = requireTemplates(inputs.templates);
+    assertRootTemplateList(templates);
+    return {
+      content: removeTemplatesFromContent(
+        requireContent(inputs.content),
+        templates,
+      ),
+    };
+  },
 };
 
 const regexTypoFixing: NodeSpec = {
@@ -1291,6 +1315,7 @@ export const mediaWikiNodes: NodeSpecRegistry = {
   [setParameter.typeId]: setParameter,
   [hasParameter.typeId]: hasParameter,
   [indentTemplatesNode.typeId]: indentTemplatesNode,
+  [mapTemplatesByNameNode.typeId]: mapTemplatesByNameNode,
   [applyTemplates.typeId]: applyTemplates,
   [deleteTemplatesFromContent.typeId]: deleteTemplatesFromContent,
   [regexTypoFixing.typeId]: regexTypoFixing,

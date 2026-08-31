@@ -2,14 +2,13 @@ import { asString, isWikiTitle, normName, templateName } from "./coerce.ts";
 import { fetchPageContents, fetchPageContentsAsync } from "./pageContents.ts";
 import { WikiTitle } from "../src/wiki/title.ts";
 import {
-  applyTemplatesToContent,
-  findAllTemplates,
+  chunksToString,
   hitToTemplate,
   indentTemplate,
+  mapTemplatesInContent,
   removeTemplateParameter,
   renameTemplateParameterKey,
-  templateNamesMatch,
-  templatesFromContent,
+  scanAllTemplateHits,
   type Template,
 } from "./wikitext.ts";
 
@@ -321,7 +320,7 @@ export function parseDeprecatedInvokeInner(
   for (const p of params) {
     if (p.kind !== "named") continue;
     const key = p.name.trim();
-    const value = p.value.trim();
+    const value = chunksToString(p.value).trim();
     if (!key) continue;
 
     if (META_PARAMS.has(key.toLowerCase())) continue;
@@ -356,7 +355,8 @@ export function parseDeprecatedRulesFromTemplateSource(
 ): DeprecatedParamsRules {
   const masked = maskProtectedRegions(source);
   // Nested: many templates wrap the invoke in {{main other|…}} / similar.
-  const hit = findAllTemplates(masked).find((t) =>
+  // Use the flat scanner on masked text (mask may not form a clean tree).
+  const hit = scanAllTemplateHits(masked).find((t) =>
     isDeprecatedInvokeName(t.name),
   );
   if (!hit) return { ...EMPTY_RULES, renames: [], remove: [], regexps: [] };
@@ -389,8 +389,7 @@ export function resolveTemplatePageTitle(title: unknown): string {
 }
 
 /** `#REDIRECT [[Target]]` (and soft `#redirect [[…]]`). */
-const REDIRECT_RE =
-  /^#\s*redirect\s*:?\s*\[\[([^\]|#]+)(?:\|[^\]]*)?\]\]/i;
+const REDIRECT_RE = /^#\s*redirect\s*:?\s*\[\[([^\]|#]+)(?:\|[^\]]*)?\]\]/i;
 
 export function parseRedirectTarget(content: string): string | null {
   const m = REDIRECT_RE.exec(content.trim());
@@ -437,7 +436,9 @@ function loadTemplateSourceSync(titleKey: string): LoadedTemplate {
   throw new Error(`Too many template redirects starting at ${titleKey}`);
 }
 
-async function loadTemplateSourceAsync(titleKey: string): Promise<LoadedTemplate> {
+async function loadTemplateSourceAsync(
+  titleKey: string,
+): Promise<LoadedTemplate> {
   const matchNames = new Set<string>();
   addMatchName(matchNames, titleKey);
   let current = titleKey;
@@ -567,12 +568,6 @@ function applyRulesToContent(
   fixindent: boolean,
   rules: DeprecatedParamsRules,
 ): string {
-  const all = templatesFromContent(content);
-  const targets = all.filter((t) =>
-    matchNames.some((want) => templateNamesMatch(t.name, want)),
-  );
-  if (targets.length === 0) return content;
-
   const hasWork =
     rules.renames.length > 0 ||
     rules.remove.length > 0 ||
@@ -580,13 +575,11 @@ function applyRulesToContent(
 
   if (!hasWork && !fixindent) return content;
 
-  const updated = targets.map((t) => {
+  return mapTemplatesInContent(content, matchNames, (t) => {
     let next = hasWork ? applyRulesToTemplate(t, rules) : t;
     if (fixindent) next = indentTemplate(next);
     return next;
   });
-
-  return applyTemplatesToContent(content, updated);
 }
 
 /** Sync apply — for nodish nodes. */

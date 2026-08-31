@@ -13,10 +13,18 @@ export type TemplateHit = {
   inner: string;
 };
 
+/** Text or nested template inside a param value / page. */
+export type WikitextChunk =
+  | { kind: "text"; text: string }
+  | { kind: "template"; template: Template };
+
+/** Top-level page as an alternating forest of text and root templates. */
+export type PageChunks = WikitextChunk[];
+
 export type TemplateNamedParam = {
   kind: "named";
   name: string;
-  value: string;
+  value: WikitextChunk[];
   wsBefore: string;
   wsAfterName: string;
 };
@@ -25,12 +33,12 @@ export type TemplatePositionalParam = {
   kind: "positional";
   /** 1-based positional index among positional params only. */
   index: number;
-  value: string;
+  value: WikitextChunk[];
 };
 
 export type TemplateParam = TemplateNamedParam | TemplatePositionalParam;
 
-/** Structured template invocation (one element of `wiki/templates`). */
+/** Structured template invocation (forest root or nested in a param). */
 export type Template = {
   name: string;
   params: TemplateParam[];
@@ -44,7 +52,7 @@ export type Template = {
   pristine: boolean;
 };
 
-/** Split template inner on first-level `|` (respects nested `{{ }}`). */
+/** Split template inner on first-level `|` (respects nested `{{ }}` and `[[ ]]`). */
 export function splitFirstLevelPipes(inner: string): string[] {
   const parts: string[] = [];
   let buf = "";
@@ -87,6 +95,100 @@ export function splitFirstLevelPipes(inner: string): string[] {
   return parts;
 }
 
+export function chunksToString(chunks: WikitextChunk[]): string {
+  let out = "";
+  for (const c of chunks) {
+    out += c.kind === "text" ? c.text : serializeTemplate(c.template);
+  }
+  return out;
+}
+
+export function parseValueChunks(
+  value: string,
+  baseOffset = 0,
+): WikitextChunk[] {
+  const chunks: WikitextChunk[] = [];
+  let i = 0;
+  let textStart = 0;
+  while (i < value.length) {
+    if (i < value.length - 1 && value[i] === "{" && value[i + 1] === "{") {
+      if (value[i + 2] === "{") {
+        i += 3;
+        continue;
+      }
+      if (i > textStart) {
+        chunks.push({ kind: "text", text: value.slice(textStart, i) });
+      }
+      const start = i;
+      let depth = 2;
+      i += 2;
+      while (i < value.length && depth > 0) {
+        if (value[i] === "{" && value[i + 1] === "{") {
+          depth += 2;
+          i += 2;
+          continue;
+        }
+        if (value[i] === "}" && value[i + 1] === "}") {
+          depth -= 2;
+          i += 2;
+          continue;
+        }
+        i += 1;
+      }
+      if (depth === 0) {
+        const raw = value.slice(start, i);
+        const inner = raw.slice(2, -2);
+        const nameMatch = /^([^|{}\n]+)/.exec(inner);
+        const name = (nameMatch?.[1] ?? "").trim();
+        if (name) {
+          chunks.push({
+            kind: "template",
+            template: hitToTemplate({
+              raw,
+              start: baseOffset + start,
+              end: baseOffset + i,
+              name,
+              inner,
+            }),
+          });
+        } else {
+          chunks.push({ kind: "text", text: raw });
+        }
+        textStart = i;
+        continue;
+      }
+      // Unbalanced. treat remainder as text.
+      break;
+    }
+    i += 1;
+  }
+  if (textStart < value.length) {
+    chunks.push({ kind: "text", text: value.slice(textStart) });
+  }
+  if (chunks.length === 0) return [{ kind: "text", text: "" }];
+  return chunks;
+}
+
+export function parsePage(content: string): PageChunks {
+  return parseValueChunks(content, 0);
+}
+
+export function serializePage(chunks: PageChunks): string {
+  return chunksToString(chunks);
+}
+
+export function pageRoots(chunks: PageChunks): Template[] {
+  const roots: Template[] = [];
+  for (const c of chunks) {
+    if (c.kind === "template") roots.push(c.template);
+  }
+  return roots;
+}
+
+function trimChunks(chunks: WikitextChunk[]): WikitextChunk[] {
+  return parseValueChunks(chunksToString(chunks).trim());
+}
+
 export function hitToTemplate(hit: TemplateHit): Template {
   const parts = splitFirstLevelPipes(hit.inner);
   const namePart = parts[0] ?? "";
@@ -97,14 +199,26 @@ export function hitToTemplate(hit: TemplateHit): Template {
       : (/\s*$/.exec(namePart.slice(nameWsLeading.length))?.[0] ?? "");
   const params: TemplateParam[] = [];
   let positionalIndex = 0;
-  for (let i = 1; i < parts.length; i++) {
+  // Absolute offset of `inner` within the page.
+  const innerBase = hit.start + 2;
+  let cursor = 0;
+  for (let i = 0; i < parts.length; i++) {
     const part = parts[i]!;
+    const partStart = cursor;
+    cursor += part.length;
+    if (i < parts.length - 1) cursor += 1; // account for `|`
+    if (i === 0) continue;
     const m = /^(\s*)([^=|]+?)(\s*)=(.*)$/s.exec(part);
     if (m) {
+      const valueStr = m[4]!;
+      const valueOffsetInPart = part.length - valueStr.length;
       params.push({
         kind: "named",
         name: m[2]!.trim(),
-        value: m[4]!,
+        value: parseValueChunks(
+          valueStr,
+          innerBase + partStart + valueOffsetInPart,
+        ),
         wsBefore: m[1]!,
         wsAfterName: m[3]!,
       });
@@ -113,7 +227,7 @@ export function hitToTemplate(hit: TemplateHit): Template {
       params.push({
         kind: "positional",
         index: positionalIndex,
-        value: part,
+        value: parseValueChunks(part, innerBase + partStart),
       });
     }
   }
@@ -134,9 +248,9 @@ export function serializeTemplate(t: Template): string {
   const nameSeg = `${t.nameWsLeading}${t.name}${t.nameWsTrailing}`;
   const paramSegs = t.params.map((p) => {
     if (p.kind === "named") {
-      return `${p.wsBefore}${p.name}${p.wsAfterName}=${p.value}`;
+      return `${p.wsBefore}${p.name}${p.wsAfterName}=${chunksToString(p.value)}`;
     }
-    return p.value;
+    return chunksToString(p.value);
   });
   const inner =
     paramSegs.length === 0 ? nameSeg : `${nameSeg}|${paramSegs.join("|")}`;
@@ -146,6 +260,7 @@ export function serializeTemplate(t: Template): string {
 /**
  * Multi-line indented form (AWB-style): name on first line, one `| name = value`
  * per param with aligned `=`, closing `}}` on its own line.
+ * Nested templates serialize recursively; they are not re-split as Outer params.
  */
 export function formatIndentedTemplate(t: Template): string {
   const namedWidths = t.params
@@ -155,28 +270,29 @@ export function formatIndentedTemplate(t: Template): string {
 
   const lines: string[] = [`{{${t.name}`];
   for (const p of t.params) {
+    const valueText = chunksToString(p.value).trim();
     if (p.kind === "named") {
       const pad = " ".repeat(Math.max(0, width - p.name.length));
-      lines.push(`| ${p.name}${pad} = ${p.value.trim()}`);
+      lines.push(`| ${p.name}${pad} = ${valueText}`);
     } else {
-      lines.push(`| ${p.value.trim()}`);
+      lines.push(`| ${valueText}`);
     }
   }
   lines.push("}}");
   return lines.join("\n");
 }
 
-/** Reformat each template to indented multi-line wikitext (for Apply). */
+/** Reformat this template to indented multi-line wikitext (children serialize as-is). */
 export function indentTemplate(t: Template): Template {
   const params = t.params.map((p) =>
     p.kind === "named"
       ? {
           ...p,
-          value: p.value.trim(),
+          value: trimChunks(p.value),
           wsBefore: " ",
           wsAfterName: " ",
         }
-      : { ...p, value: p.value.trim() },
+      : { ...p, value: trimChunks(p.value) },
   );
   const next: Template = {
     ...t,
@@ -185,7 +301,6 @@ export function indentTemplate(t: Template): Template {
     nameWsTrailing: "",
     pristine: false,
   };
-  // Store indented text as raw and mark pristine so Apply keeps formatting.
   return {
     ...next,
     raw: formatIndentedTemplate(next),
@@ -225,11 +340,11 @@ export function getTemplateParameter(t: Template, parameter: string): string {
   const named = t.params.find(
     (p) => p.kind === "named" && p.name.toLowerCase() === k.toLowerCase(),
   );
-  if (named) return named.value;
+  if (named) return chunksToString(named.value);
   const positional = t.params.find(
     (p) => p.kind === "positional" && String(p.index) === k,
   );
-  return positional?.value ?? "";
+  return positional ? chunksToString(positional.value) : "";
 }
 
 export function removeTemplateParameter(
@@ -254,13 +369,14 @@ export function setTemplateParameter(
 ): Template {
   const k = parameter.trim();
   if (!k) return t;
+  const chunks = parseValueChunks(value);
   const params = [...t.params];
   const namedIdx = params.findIndex(
     (p) => p.kind === "named" && p.name.toLowerCase() === k.toLowerCase(),
   );
   if (namedIdx >= 0) {
     const prev = params[namedIdx]! as TemplateNamedParam;
-    params[namedIdx] = { ...prev, value };
+    params[namedIdx] = { ...prev, value: chunks };
     return { ...t, params, pristine: false };
   }
   if (/^\d+$/.test(k)) {
@@ -269,16 +385,16 @@ export function setTemplateParameter(
     );
     if (posIdx >= 0) {
       const prev = params[posIdx]! as TemplatePositionalParam;
-      params[posIdx] = { ...prev, value };
+      params[posIdx] = { ...prev, value: chunks };
       return { ...t, params, pristine: false };
     }
-    params.push({ kind: "positional", index: Number(k), value });
+    params.push({ kind: "positional", index: Number(k), value: chunks });
     return { ...t, params: renumberPositionals(params), pristine: false };
   }
   params.push({
     kind: "named",
     name: k,
-    value,
+    value: chunks,
     wsBefore: "",
     wsAfterName: "",
   });
@@ -317,8 +433,109 @@ export function setTemplateName(t: Template, newName: unknown): Template {
   };
 }
 
+/** Preorder walk of every template in a forest (roots + nested). */
+export function walkTemplates(
+  roots: Template[],
+  fn: (t: Template) => void,
+): void {
+  const walk = (t: Template): void => {
+    fn(t);
+    for (const p of t.params) {
+      for (const c of p.value) {
+        if (c.kind === "template") walk(c.template);
+      }
+    }
+  };
+  for (const r of roots) walk(r);
+}
+
+/** Bottom-up map over a single template tree. */
+export function mapTemplateTree(
+  t: Template,
+  fn: (t: Template) => Template,
+): Template {
+  let anyChildChanged = false;
+  const params = t.params.map((p) => {
+    let valueChanged = false;
+    const value = p.value.map((c) => {
+      if (c.kind === "text") return c;
+      const next = mapTemplateTree(c.template, fn);
+      if (next !== c.template) {
+        valueChanged = true;
+        anyChildChanged = true;
+        return { kind: "template" as const, template: next };
+      }
+      return c;
+    });
+    return valueChanged ? { ...p, value } : p;
+  });
+  const base = anyChildChanged ? { ...t, params, pristine: false } : t;
+  return fn(base);
+}
+
+/** Map every node in the forest (deep). */
+export function mapAllTemplates(
+  roots: Template[],
+  fn: (t: Template) => Template,
+): Template[] {
+  return roots.map((r) => mapTemplateTree(r, fn));
+}
+
+/** Map every node whose name matches any of `names` (deep). Returns updated roots. */
+export function mapTemplatesByName(
+  roots: Template[],
+  names: string | string[],
+  fn: (t: Template) => Template,
+): Template[] {
+  const list = Array.isArray(names) ? names : [names];
+  return roots.map((r) =>
+    mapTemplateTree(r, (t) => {
+      if (list.some((n) => templateNamesMatch(t.name, n))) return fn(t);
+      return t;
+    }),
+  );
+}
+
+/** Unique template names (Template: stripped) at all depths. Skips `#…` parser functions. */
+export function collectTemplateNames(roots: Template[]): string[] {
+  const names = new Set<string>();
+  walkTemplates(roots, (t) => {
+    const n = t.name.trim();
+    if (!n || n.startsWith("#")) return;
+    names.add(templateName(n));
+  });
+  return [...names];
+}
+
+/** Deep find: all matching nodes (may be nested — not safe to Apply as a list). */
+export function findTemplatesByNameDeep(
+  content: string,
+  name: unknown,
+): Template[] {
+  const want = templateName(name);
+  const out: Template[] = [];
+  walkTemplates(templatesFromContent(content), (t) => {
+    if (templateNamesMatch(t.name, want)) out.push(t);
+  });
+  return out;
+}
+
+/**
+ * Parse content, deep-map matching templates, write roots back.
+ * Prefer this over find-nested + applyTemplatesToContent.
+ */
+export function mapTemplatesInContent(
+  content: string,
+  names: string | string[],
+  fn: (t: Template) => Template,
+): string {
+  const roots = templatesFromContent(content);
+  const mapped = mapTemplatesByName(roots, names, fn);
+  return applyTemplatesToContent(content, mapped);
+}
+
 export function templatesFromContent(content: string): Template[] {
-  return findTemplates(content).map(hitToTemplate);
+  return pageRoots(parsePage(content));
 }
 
 export function filterTemplatesByName(
@@ -348,10 +565,41 @@ export function joinTemplates(a: Template[], b: Template[]): Template[] {
   return [...a, ...b];
 }
 
+/** True if `inner`’s span is strictly inside `outer`. */
+function isStrictlyNested(outer: Template, inner: Template): boolean {
+  return (
+    inner.start >= outer.start &&
+    inner.end <= outer.end &&
+    (inner.start > outer.start || inner.end < outer.end)
+  );
+}
+
+/**
+ * Assert the list has no template strictly nested inside another in the list.
+ * Apply/Delete only accept root-level spans (children serialize inside parents).
+ */
+export function assertRootTemplateList(templates: Template[]): void {
+  for (let i = 0; i < templates.length; i++) {
+    for (let j = 0; j < templates.length; j++) {
+      if (i === j) continue;
+      if (isStrictlyNested(templates[i]!, templates[j]!)) {
+        throw new Error(
+          "Expected root templates only; nested spans must not be applied or deleted separately (use map-templates-by-name / mapTemplatesInContent)",
+        );
+      }
+    }
+  }
+}
+
+/**
+ * Replace each root template span with its recursive serialization.
+ * Nested templates must not appear as separate list entries.
+ */
 export function applyTemplatesToContent(
   content: string,
   templates: Template[],
 ): string {
+  assertRootTemplateList(templates);
   const ordered = [...templates].sort((a, b) => b.start - a.start);
   let out = content;
   for (const t of ordered) {
@@ -364,6 +612,7 @@ export function removeTemplatesFromContent(
   content: string,
   templates: Template[],
 ): string {
+  assertRootTemplateList(templates);
   const ordered = [...templates].sort((a, b) => b.start - a.start);
   let out = content;
   for (const t of ordered) {
@@ -379,56 +628,42 @@ export type CategoryHit = {
   name: string;
 };
 
+function templateToHit(t: Template): TemplateHit {
+  const raw = t.pristine ? t.raw : serializeTemplate(t);
+  return {
+    raw,
+    start: t.start,
+    end: t.end,
+    name: t.name,
+    inner: raw.slice(2, -2),
+  };
+}
+
 /**
- * Find top-level `{{...}}` template invocations (skips `{{{` params).
+ * Top-level `{{...}}` hits (forest roots). Thin view over parsePage.
  * Does not strip nowiki/comments.
  */
 export function findTemplates(content: string): TemplateHit[] {
+  return templatesFromContent(content).map(templateToHit);
+}
+
+/**
+ * Every `{{...}}` including nested ones (preorder flatten).
+ * Skips `{{{` params. Does not strip nowiki/comments.
+ */
+export function findAllTemplates(content: string): TemplateHit[] {
   const hits: TemplateHit[] = [];
-  let i = 0;
-  while (i < content.length - 1) {
-    if (content[i] === "{" && content[i + 1] === "{") {
-      if (content[i + 2] === "{") {
-        i += 3;
-        continue;
-      }
-      const start = i;
-      let depth = 2;
-      i += 2;
-      while (i < content.length && depth > 0) {
-        if (content[i] === "{" && content[i + 1] === "{") {
-          depth += 2;
-          i += 2;
-          continue;
-        }
-        if (content[i] === "}" && content[i + 1] === "}") {
-          depth -= 2;
-          i += 2;
-          continue;
-        }
-        i += 1;
-      }
-      if (depth === 0) {
-        const raw = content.slice(start, i);
-        const inner = raw.slice(2, -2);
-        const nameMatch = /^([^|{}\n]+)/.exec(inner);
-        const name = (nameMatch?.[1] ?? "").trim();
-        if (name) {
-          hits.push({ raw, start, end: i, name, inner });
-        }
-      }
-      continue;
-    }
-    i += 1;
-  }
+  walkTemplates(templatesFromContent(content), (t) => {
+    hits.push(templateToHit(t));
+  });
   return hits;
 }
 
 /**
- * Find every `{{...}}` including nested ones (e.g. `#invoke:…` inside `{{main other|…}}`).
- * Skips `{{{` params. Does not strip nowiki/comments.
+ * Flat scanner for every `{{...}}` including nested (used when content is
+ * masked / not a clean tree parse). Prefer findAllTemplates on normal wikitext.
  */
-export function findAllTemplates(content: string): TemplateHit[] {
+export function scanAllTemplateHits(content: string): TemplateHit[] {
   const hits: TemplateHit[] = [];
   const stack: number[] = [];
   let i = 0;
@@ -494,11 +729,15 @@ export function contentHasTemplate(
   template: unknown,
 ): boolean {
   const want = templateName(template);
-  return findTemplates(content).some((t) => templateNamesMatch(t.name, want));
+  let found = false;
+  walkTemplates(templatesFromContent(content), (t) => {
+    if (templateNamesMatch(t.name, want)) found = true;
+  });
+  return found;
 }
 
-/** First-level `|name=` / `| name =` renames inside a template inner body.
- * Parameter names are matched case-sensitively (MW args are).
+/** First-level `|name=` renames inside a template inner body (string).
+ * Prefer renameTemplateParameterKey on a Template tree when possible.
  */
 export function renameFirstLevelParams(
   inner: string,
@@ -511,7 +750,7 @@ export function renameFirstLevelParams(
 
   const parts = splitFirstLevelPipes(inner);
   const renamed = parts.map((part, idx) => {
-    if (idx === 0) return part; // template name segment
+    if (idx === 0) return part;
     const m = /^(\s*)([^=|]+?)(\s*)=(.*)$/s.exec(part);
     if (!m) return part;
     const [, ws1, name, ws2, rest] = m;

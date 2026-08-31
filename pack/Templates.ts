@@ -1,22 +1,35 @@
 import type { TypeSpec } from "@nodish/core";
-import type { Template, TemplateParam } from "./wikitext.ts";
+import type { Template, TemplateParam, WikitextChunk } from "./wikitext.ts";
+import {
+  chunksToString,
+  getTemplateParameter,
+  setTemplateParameter,
+} from "./wikitext.ts";
 
 export const TEMPLATES_TYPE = "wiki/templates";
 const TEMPLATES_COLOR = "#3d8bfd";
 
+function isWikitextChunk(value: unknown): value is WikitextChunk {
+  if (typeof value !== "object" || value === null) return false;
+  const c = value as WikitextChunk;
+  if (c.kind === "text") return typeof c.text === "string";
+  if (c.kind === "template") return isTemplate(c.template);
+  return false;
+}
+
 function isTemplateParam(value: unknown): value is TemplateParam {
   if (typeof value !== "object" || value === null) return false;
   const p = value as TemplateParam;
+  if (!Array.isArray(p.value) || !p.value.every(isWikitextChunk)) return false;
   if (p.kind === "named") {
     return (
       typeof p.name === "string" &&
-      typeof p.value === "string" &&
       typeof p.wsBefore === "string" &&
       typeof p.wsAfterName === "string"
     );
   }
   if (p.kind === "positional") {
-    return typeof p.index === "number" && typeof p.value === "string";
+    return typeof p.index === "number";
   }
   return false;
 }
@@ -55,6 +68,25 @@ export function requireSingularTemplate(value: unknown): Template {
     throw new Error("Expected exactly one template");
   }
   return templates[0]!;
+}
+
+/** String form of a named/positional param (nested templates serialized). */
+export function paramValueString(t: Template, key: string): string {
+  return getTemplateParameter(t, key);
+}
+
+/** Set a param from a wikitext string (re-parsed into chunks). */
+export function setParamValueString(
+  t: Template,
+  key: string,
+  value: string,
+): Template {
+  return setTemplateParameter(t, key, value);
+}
+
+/** Serialize param chunks to string (for rule parsers, etc.). */
+export function paramChunksToString(value: TemplateParam["value"]): string {
+  return chunksToString(value);
 }
 
 export const Templates: TypeSpec = {
