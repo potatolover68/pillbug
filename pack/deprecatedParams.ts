@@ -3,12 +3,14 @@ import { fetchPageContents, fetchPageContentsAsync } from "./pageContents.ts";
 import { WikiTitle } from "../src/wiki/title.ts";
 import {
   chunksToString,
+  getTemplateParameter,
   hitToTemplate,
   indentTemplate,
   mapTemplatesInContent,
   removeTemplateParameter,
   renameTemplateParameterKey,
   scanAllTemplateHits,
+  templateNamesMatch,
   type Template,
 } from "./wikitext.ts";
 
@@ -534,6 +536,24 @@ export async function clearDeprecatedParamsCacheAsync(): Promise<void> {
   await idbClearRules();
 }
 
+/**
+ * One-off for {{Infobox academic}}
+ */
+function applyInfoboxAcademicEducationSwap(t: Template): Template {
+  const alma = getTemplateParameter(t, "alma_mater");
+  if (!alma.trim()) return t;
+  const almaKey = t.params.find(
+    (p) => p.kind === "named" && p.name.toLowerCase() === "alma_mater",
+  );
+  if (!almaKey || almaKey.kind !== "named") return t;
+  let next = removeTemplateParameter(t, "education");
+  return renameTemplateParameterKey(next, almaKey.name, "education");
+}
+
+function isInfoboxAcademicMatch(matchNames: string[]): boolean {
+  return matchNames.some((n) => templateNamesMatch(n, "Infobox academic"));
+}
+
 function applyRulesToTemplate(
   t: Template,
   rules: DeprecatedParamsRules,
@@ -572,11 +592,14 @@ function applyRulesToContent(
     rules.renames.length > 0 ||
     rules.remove.length > 0 ||
     rules.regexps.length > 0;
+  const academicSwap = isInfoboxAcademicMatch(matchNames);
 
-  if (!hasWork && !fixindent) return content;
+  if (!hasWork && !fixindent && !academicSwap) return content;
 
   return mapTemplatesInContent(content, matchNames, (t) => {
-    let next = hasWork ? applyRulesToTemplate(t, rules) : t;
+    let next = t;
+    if (academicSwap) next = applyInfoboxAcademicEducationSwap(next);
+    if (hasWork) next = applyRulesToTemplate(next, rules);
     if (fixindent) next = indentTemplate(next);
     return next;
   });
