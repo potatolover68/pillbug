@@ -536,22 +536,84 @@ export async function clearDeprecatedParamsCacheAsync(): Promise<void> {
   await idbClearRules();
 }
 
-/**
- * One-off for {{Infobox academic}}
+/*
+ * One-off for https://en.wikipedia.org/wiki/Special:PermanentLink/1362614882#RFC:_Alma_mater_vs_Education_in_Infoboxes
+ * since it *is* an enwiki consensus, one-off will only take effect on enwiki / testwiki / test2wiki.
  */
-function applyInfoboxAcademicEducationSwap(t: Template): Template {
-  const alma = getTemplateParameter(t, "alma_mater");
-  if (!alma.trim()) return t;
+const ALMA_MATER_EDUCATION_INFOBOXES = [
+  "Infobox person",
+  "Infobox officeholder",
+  "Infobox military person",
+  "Infobox Christian leader",
+  "Infobox college coach",
+  "Infobox academic",
+  "Infobox Latter Day Saint biography",
+];
+
+const ALMA_MATER_SWAP_DBNAMES = new Set(["enwiki", "testwiki", "test2wiki"]);
+const ALMA_MATER_SWAP_HOSTS = new Set([
+  "en.wikipedia.org",
+  "test.wikipedia.org",
+  "test2.wikipedia.org",
+]);
+
+/** App (nodish) supplies the configured wiki origin; RDP uses mw.config. */
+let wikiOriginProvider: (() => string | undefined) | null = null;
+
+export function setWikiOriginProvider(
+  fn: (() => string | undefined) | null,
+): void {
+  wikiOriginProvider = fn;
+}
+
+function readMwConfig(key: string): unknown {
+  const g = globalThis as {
+    mw?: { config?: { get?: (k: string) => unknown } };
+  };
+  try {
+    return g.mw?.config?.get?.(key);
+  } catch {
+    return undefined;
+  }
+}
+
+function currentWikiHostname(): string | undefined {
+  const server = readMwConfig("wgServerName");
+  if (typeof server === "string" && server.trim()) {
+    return server.trim().toLowerCase();
+  }
+  const origin = wikiOriginProvider?.();
+  if (!origin) return undefined;
+  try {
+    return new URL(origin).hostname.toLowerCase();
+  } catch {
+    return undefined;
+  }
+}
+
+function isAlmaMaterEducationSwapWiki(): boolean {
+  const db = readMwConfig("wgDBname");
+  if (typeof db === "string" && ALMA_MATER_SWAP_DBNAMES.has(db)) return true;
+  const host = currentWikiHostname();
+  return host != null && ALMA_MATER_SWAP_HOSTS.has(host);
+}
+
+function applyAlmaMaterEducationSwap(t: Template): Template {
   const almaKey = t.params.find(
     (p) => p.kind === "named" && p.name.toLowerCase() === "alma_mater",
   );
   if (!almaKey || almaKey.kind !== "named") return t;
-  let next = removeTemplateParameter(t, "education");
+  if (!getTemplateParameter(t, "alma_mater").trim()) {
+    return removeTemplateParameter(t, almaKey.name);
+  }
+  const next = removeTemplateParameter(t, "education");
   return renameTemplateParameterKey(next, almaKey.name, "education");
 }
 
-function isInfoboxAcademicMatch(matchNames: string[]): boolean {
-  return matchNames.some((n) => templateNamesMatch(n, "Infobox academic"));
+function isAlmaMaterEducationInfobox(matchNames: string[]): boolean {
+  return matchNames.some((n) =>
+    ALMA_MATER_EDUCATION_INFOBOXES.some((want) => templateNamesMatch(n, want)),
+  );
 }
 
 function applyRulesToTemplate(
@@ -592,13 +654,14 @@ function applyRulesToContent(
     rules.renames.length > 0 ||
     rules.remove.length > 0 ||
     rules.regexps.length > 0;
-  const academicSwap = isInfoboxAcademicMatch(matchNames);
+  const almaMaterSwap =
+    isAlmaMaterEducationSwapWiki() && isAlmaMaterEducationInfobox(matchNames);
 
-  if (!hasWork && !fixindent && !academicSwap) return content;
+  if (!hasWork && !fixindent && !almaMaterSwap) return content;
 
   return mapTemplatesInContent(content, matchNames, (t) => {
     let next = t;
-    if (academicSwap) next = applyInfoboxAcademicEducationSwap(next);
+    if (almaMaterSwap) next = applyAlmaMaterEducationSwap(next);
     if (hasWork) next = applyRulesToTemplate(next, rules);
     if (fixindent) next = indentTemplate(next);
     return next;

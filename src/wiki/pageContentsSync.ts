@@ -6,6 +6,7 @@ import {
   setPageContentsFetcher,
   type PageContentsResult,
 } from "../../pack/pageContents";
+import { setWikiOriginProvider } from "../../pack/deprecatedParams";
 import { DEFAULT_WIKI_ORIGIN, WIKI_ORIGIN_HEADER } from "./defaults";
 import { wikiOrigin } from "./session";
 
@@ -132,3 +133,4 @@ export function installPageContentsFetcher(): void {
 }
 
 installPageContentsFetcher();
+setWikiOriginProvider(() => wikiOrigin.value);
