@@ -25,7 +25,7 @@ const STEP_DEFS: TourStepDef[] = [
     element: "[data-tour='code-graph-toggle']",
     title: "Process graph",
     description:
-      "The process graph is what transforms the page text. It will always receive the page's title and text, and it should output the transformed text. If the output is the same as the input, the page is skipped. The example renames an Infobox parameter, then runs RegEx Typo Fixing (RETF).",
+      "The process graph is what transforms the page text. It will always receive the page's title and text, and it should output the transformed text. If the output is the same as the input, the page is skipped. The example renames an Infobox parameter, then runs RegEx typo fixing (RETF).",
     side: "left",
     onHighlightStarted: () => {
       activeCodeGraph.value = "process";
@@ -45,7 +45,7 @@ const STEP_DEFS: TourStepDef[] = [
     element: "[data-tour='code-canvas']",
     title: "Think in transformations",
     description:
-      "This is a dataflow editor: each node is one small change. The demo chains Rename Parameter into RegEx Typo Fixing.",
+      "This is a dataflow editor; a node represents one operation. The demo chains Rename parameter into RegEx typo fixing.",
     side: "left",
     onHighlightStarted: () => {
       activeCodeGraph.value = "process";

@@ -91,8 +91,10 @@ export function paramChunksToString(value: TemplateParam["value"]): string {
 
 export const Templates: TypeSpec = {
   id: TEMPLATES_TYPE,
-  label: "Templates",
+  label: "Parsed templates",
   color: TEMPLATES_COLOR,
+  description:
+    "A list of top-level {{template}} invocations from the page. Nested templates live inside parameter values, not as extra list items. Write templates back needs this root list — do not Apply a nested Find-by-name result. An empty list is valid.",
   widgets: {
     default: {
       kind: "none",
@@ -100,4 +102,11 @@ export const Templates: TypeSpec = {
   },
   validate: (value: unknown) => value === null || isTemplates(value),
   defaultValue: [],
+  format: (value: unknown) => {
+    if (!isTemplates(value) || value.length === 0) return "(empty)";
+    const shown = value.slice(0, 3).map((t) => t.name);
+    const extra = value.length > 3 ? ` +${value.length - 3}` : "";
+    const noun = value.length === 1 ? "root" : "roots";
+    return `${value.length} ${noun}: ${shown.join(", ")}${extra}`;
+  },
 };

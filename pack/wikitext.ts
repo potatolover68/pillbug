@@ -401,6 +401,23 @@ export function setTemplateParameter(
   return { ...t, params, pristine: false };
 }
 
+/** Swap two parameter values (named or positional). Missing keys are created blank first. */
+export function swapTemplateParameters(
+  t: Template,
+  parameterA: string,
+  parameterB: string,
+): Template {
+  const a = parameterA.trim();
+  const b = parameterB.trim();
+  if (!a || !b) return t;
+  const aPos = /^\d+$/.test(a);
+  const bPos = /^\d+$/.test(b);
+  if (aPos && bPos ? a === b : a.toLowerCase() === b.toLowerCase()) return t;
+  const valA = getTemplateParameter(t, a);
+  const valB = getTemplateParameter(t, b);
+  return setTemplateParameter(setTemplateParameter(t, a, valB), b, valA);
+}
+
 /** Rename a named parameter key (positional keys like "1" are not renamed).
  * Matching is case-sensitive — MW template args are (`Name` ≠ `name`).
  */
@@ -734,6 +751,111 @@ export function contentHasTemplate(
     if (templateNamesMatch(t.name, want)) found = true;
   });
   return found;
+}
+
+function mergeAdjacentText(chunks: WikitextChunk[]): WikitextChunk[] {
+  const out: WikitextChunk[] = [];
+  for (const c of chunks) {
+    const last = out[out.length - 1];
+    if (c.kind === "text" && last?.kind === "text") {
+      last.text += c.text;
+    } else if (c.kind === "text") {
+      out.push({ kind: "text", text: c.text });
+    } else {
+      out.push(c);
+    }
+  }
+  return out;
+}
+
+/** Trim leading/trailing whitespace on a param value; keep internal text as-is. */
+function normalizeValueChunks(chunks: WikitextChunk[]): WikitextChunk[] {
+  const merged = mergeAdjacentText(chunks);
+  if (merged.length === 0) return [];
+  const first = merged[0]!;
+  if (first.kind === "text") {
+    merged[0] = { kind: "text", text: first.text.trimStart() };
+  }
+  const lastI = merged.length - 1;
+  const last = merged[lastI]!;
+  if (last.kind === "text") {
+    merged[lastI] = { kind: "text", text: last.text.trimEnd() };
+  }
+  return merged.filter((c) => c.kind !== "text" || c.text.length > 0);
+}
+
+function valueChunksEqualIgnoringLayout(
+  a: WikitextChunk[],
+  b: WikitextChunk[],
+): boolean {
+  const na = normalizeValueChunks(a);
+  const nb = normalizeValueChunks(b);
+  if (na.length !== nb.length) return false;
+  for (let i = 0; i < na.length; i++) {
+    const x = na[i]!;
+    const y = nb[i]!;
+    if (x.kind !== y.kind) return false;
+    if (x.kind === "text" && y.kind === "text") {
+      if (x.text !== y.text) return false;
+    } else if (x.kind === "template" && y.kind === "template") {
+      if (!templatesEqualIgnoringLayout(x.template, y.template)) return false;
+    }
+  }
+  return true;
+}
+
+/** Same invocation ignoring indent, `| name = value` alignment, and value trim. */
+function templatesEqualIgnoringLayout(a: Template, b: Template): boolean {
+  if (!templateNamesMatch(a.name, b.name)) return false;
+  if (a.params.length !== b.params.length) return false;
+  for (let i = 0; i < a.params.length; i++) {
+    const pa = a.params[i]!;
+    const pb = b.params[i]!;
+    if (pa.kind !== pb.kind) return false;
+    if (pa.kind === "named" && pb.kind === "named") {
+      if (pa.name !== pb.name) return false;
+    } else if (pa.kind === "positional" && pb.kind === "positional") {
+      if (pa.index !== pb.index) return false;
+    }
+    if (!valueChunksEqualIgnoringLayout(pa.value, pb.value)) return false;
+  }
+  return true;
+}
+
+function pageChunksEqualIgnoringTemplateLayout(
+  a: PageChunks,
+  b: PageChunks,
+): boolean {
+  const aa = mergeAdjacentText(a);
+  const bb = mergeAdjacentText(b);
+  if (aa.length !== bb.length) return false;
+  for (let i = 0; i < aa.length; i++) {
+    const x = aa[i]!;
+    const y = bb[i]!;
+    if (x.kind !== y.kind) return false;
+    if (x.kind === "text" && y.kind === "text") {
+      if (x.text !== y.text) return false;
+    } else if (x.kind === "template" && y.kind === "template") {
+      if (!templatesEqualIgnoringLayout(x.template, y.template)) return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * True if wikitext differs by more than insubstantial whitespace inside
+ * {{templates}} (indent, `| name = value` layout, leading/trailing value
+ * spaces). Prose, added/removed/reordered params, and value text all count.
+ */
+export function contentHasSignificantChanges(
+  before: string,
+  after: string,
+): boolean {
+  if (before === after) return false;
+  return !pageChunksEqualIgnoringTemplateLayout(
+    parsePage(before),
+    parsePage(after),
+  );
 }
 
 /** First-level `|name=` renames inside a template inner body (string).

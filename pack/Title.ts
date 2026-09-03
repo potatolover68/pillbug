@@ -24,6 +24,8 @@ export const Title: TypeSpec = {
   id: TITLE_TYPE,
   label: "Title",
   color: TITLE_COLOR,
+  description:
+    "A parsed MediaWiki title (namespace + page name). Requires siteinfo from login. Wire from String to Title or the graph Title input.",
   widgets: {
     default: {
       kind: "none",
@@ -39,21 +41,26 @@ function titleMethodNode(
   outputKey: string,
   outputType: string,
   invoke: (title: WikiTitle) => unknown,
+  keywords: string[] = [],
 ): NodeSpec {
   return {
     typeId,
     displayName,
     description,
+    keywords,
     color: TITLE_COLOR,
     group: ["MediaWiki", "title"],
     inputs: {
       title: {
         type: TITLE_TYPE,
+        label: "Title",
+        description: "Parsed MediaWiki title.",
       },
     },
     outputs: {
       [outputKey]: {
         type: outputType,
+        label: displayName.replace(/^Get /i, "").replace(/^Is /i, ""),
       },
     },
     execute: (inputs) => ({
