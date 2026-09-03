@@ -1,7 +1,7 @@
 {
   "name": "pillbug",
   "private": true,
-  "version": "1.0.0-rc5",
+  "version": "1.0.0-rc6",
   "type": "module",
   "license": "GPL-3.0-or-later",
   "scripts": {
