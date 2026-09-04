@@ -915,6 +915,14 @@ function isSpecialWikilinkTarget(target: string): boolean {
   return /^(Category|File|Image|Media)\s*:/i.test(target.trim());
 }
 
+/** True if this `[[` is the target of a redirect. */
+export function isRedirectTargetWikilink(
+  content: string,
+  start: number,
+): boolean {
+  return /^\s*#\s*redirect\s*:?\s*$/i.test(content.slice(0, start));
+}
+
 /** Free wikilinks only (skips Category/File/Image/Media). */
 export function findWikilinks(content: string): WikilinkHit[] {
   const hits: WikilinkHit[] = [];

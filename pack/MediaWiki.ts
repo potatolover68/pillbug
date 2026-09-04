@@ -19,6 +19,7 @@ import {
   findTemplatesByNameDeep,
   findWikilinks,
   formatWikilink,
+  isRedirectTargetWikilink,
   getNthTemplate,
   getTemplateParameter,
   indentTemplate,
@@ -277,6 +278,7 @@ function linkTargetName(value: unknown): string {
  * Retarget free wikilinks from → to.
  * replaceOn false: [[Foo]]→[[Baz|Foo]], [[Foo|Bar]]→[[Baz|Bar]]
  * replaceOn true:  [[Foo]]→[[Baz]],     [[Foo|Bar]]→[[Baz|Bar]]
+ * Page-leading `#REDIRECT [[Foo]]` always becomes `#REDIRECT [[Baz]]` (never piped).
  */
 function retargetWikilinksInContent(
   content: string,
@@ -297,10 +299,10 @@ function retargetWikilinksInContent(
     content,
     hits.map((h) => {
       let label = h.label;
-      if (label == null && !replaceOn) {
-        label = h.target;
-      } else if (label == null && replaceOn) {
+      if (isRedirectTargetWikilink(content, h.start)) {
         label = null;
+      } else if (label == null && !replaceOn) {
+        label = h.target;
       }
       // If replaceOn and label equals new target, drop the pipe.
       if (replaceOn && label != null && normName(label) === normName(next)) {
@@ -916,7 +918,7 @@ const retargetWikilink: NodeSpec = {
   typeId: "wiki/retarget-wikilink",
   displayName: "Retarget Wikilink",
   description:
-    "Change free wikilink targets. Off: [[Foo]]→[[Baz|Foo]]. On (replace on): [[Foo]]→[[Baz]]. Piped labels are kept. Skips Category/File links.",
+    "Change free wikilink targets. Off: [[Foo]]→[[Baz|Foo]]. On (replace on): [[Foo]]→[[Baz]]. Piped labels are kept. #REDIRECT [[Foo]] becomes #REDIRECT [[Baz]] (never piped). Skips Category/File links.",
   color: MW_COLOR,
   group: GROUP_WIKILINKS,
   inputs: {
