@@ -13,32 +13,40 @@ import {
   contentHasCategory,
   contentHasSignificantChanges,
   contentHasTemplate,
+  contentHasTemplateParameter,
+  deleteTemplatesByNameInContent,
   filterTemplatesByName,
   findCategories,
   findTemplates,
   findTemplatesByNameDeep,
   findWikilinks,
   formatWikilink,
-  isRedirectTargetWikilink,
   getNthTemplate,
+  getParameterInContent,
   getTemplateParameter,
   indentTemplate,
   indentTemplates,
+  indentTemplatesInContent,
+  isRedirectTargetWikilink,
   isStubTemplateName,
   joinTemplates,
   mapAllTemplates,
   mapTemplatesByName,
   mapTemplatesInContent,
+  removeParameterInContent,
   removeTemplateParameter,
   removeTemplatesFromContent,
+  renameParameterInContent,
+  renameTemplateInContent,
   renameTemplateParameterKey,
+  setParameterInContent,
   setTemplateName,
   setTemplateParameter,
   sliceTemplates,
+  swapParametersInContent,
   swapTemplateParameters,
   templateHasParameter,
   templatesFromContent,
-  writeTemplateName,
   type Template,
 } from "./wikitext.ts";
 import { replaceDeprecatedParametersInContent } from "./deprecatedParams.ts";
@@ -48,8 +56,8 @@ import { applyAwbTypos } from "./typos.ts";
 const MW_COLOR = "#3d8bfd";
 const GROUP_ON_PAGE = ["MediaWiki", "templates", "on the page"];
 const GROUP_PARAMS = ["MediaWiki", "templates", "parameters"];
-const GROUP_LOOKUP = ["MediaWiki", "templates", "look up"];
 const GROUP_LIST = ["MediaWiki", "templates", "list"];
+const GROUP_DEPRECATED = ["MediaWiki", "templates", "deprecated"];
 const GROUP_CATEGORIES = ["MediaWiki", "categories"];
 const GROUP_WIKILINKS = ["MediaWiki", "wikilinks"];
 const GROUP_TITLE = ["MediaWiki", "title"];
@@ -144,6 +152,12 @@ function requireContent(value: unknown): string {
   return value;
 }
 
+function requireTemplateName(value: unknown): string {
+  const name = templateName(value).trim();
+  if (!name) throw new Error("Template name is required");
+  return name;
+}
+
 function replaceSpans(
   content: string,
   replacements: Array<{ start: number; end: number; text: string }>,
@@ -156,16 +170,6 @@ function replaceSpans(
   return out;
 }
 
-function renameTemplateInContent(
-  content: string,
-  oldT: unknown,
-  newT: unknown,
-): string {
-  const want = templateName(oldT);
-  const next = writeTemplateName(templateName(newT));
-  return mapTemplatesInContent(content, want, (t) => setTemplateName(t, next));
-}
-
 function renameTemplatesCollection(
   templates: Template[],
   oldT: unknown,
@@ -173,20 +177,6 @@ function renameTemplatesCollection(
 ): Template[] {
   const want = templateName(oldT);
   return mapTemplatesByName(templates, want, (t) => setTemplateName(t, newT));
-}
-
-function renameTemplateParamInContent(
-  content: string,
-  template: unknown,
-  oldParam: unknown,
-  newParam: unknown,
-): string {
-  const want = templateName(template);
-  const oldP = asString(oldParam);
-  const newP = asString(newParam);
-  return mapTemplatesInContent(content, want, (t) =>
-    renameTemplateParameterKey(t, oldP, newP),
-  );
 }
 
 function asContentOrTemplates(
@@ -733,12 +723,12 @@ const contentHasTemplateNode: NodeSpec = {
 
 const renameTemplate: NodeSpec = {
   typeId: "wiki/rename-template",
-  displayName: "Rename template",
+  displayName: "Rename template (deprecated)",
   description:
-    "Rename {{Old}} to {{New}} at any depth, including nested invocations. Wire wikitext or a Parsed templates list; the output is the same kind.",
+    "Deprecated until v1.0.0. Use Rename template (wikitext in/out). This node accepts wikitext or a Parsed templates list; the output is the same kind.",
   color: MW_COLOR,
-  group: GROUP_ON_PAGE,
-  keywords: ["retarget", "rename invocation"],
+  group: GROUP_DEPRECATED,
+  keywords: ["retarget", "rename invocation", "deprecated"],
   inputs: {
     source: pageOrTemplatesPort,
     oldName: oldNamePort,
@@ -770,12 +760,12 @@ const renameTemplate: NodeSpec = {
 
 const renameParameter: NodeSpec = {
   typeId: "wiki/rename-parameter",
-  displayName: "Rename parameter",
+  displayName: "Rename parameter (deprecated)",
   description:
-    "Rename a parameter key. On wikitext, only invocations of Template name are updated (nested included). On a Parsed templates list, leave Template name empty to update every node.",
+    "Deprecated until v1.0.0. Use Rename parameter (wikitext in/out). On a Parsed templates list, leave Template name empty to update every node.",
   color: MW_COLOR,
-  group: GROUP_PARAMS,
-  keywords: ["rdp", "rename key"],
+  group: GROUP_DEPRECATED,
+  keywords: ["rdp", "rename key", "deprecated"],
   inputs: {
     source: pageOrTemplatesPort,
     template: templateNamePort,
@@ -789,11 +779,11 @@ const renameParameter: NodeSpec = {
     const source = asContentOrTemplates(inputs.source);
     if (source.kind === "content") {
       return {
-        result: renameTemplateParamInContent(
+        result: renameParameterInContent(
           source.content,
           inputs.template,
-          inputs.oldParameter,
-          inputs.newParameter,
+          asString(inputs.oldParameter),
+          asString(inputs.newParameter),
         ),
       };
     }
@@ -810,6 +800,287 @@ const renameParameter: NodeSpec = {
     return {
       result: mapTemplatesByName(source.templates, filterName, (t) =>
         renameTemplateParameterKey(t, oldP, newP),
+      ),
+    };
+  },
+};
+
+const pageRenameTemplate: NodeSpec = {
+  typeId: "wiki/page-rename-template",
+  displayName: "Rename template",
+  description:
+    "Rename {{Old}} to {{New}} at any depth, including nested invocations. Wikitext in, wikitext out.",
+  color: MW_COLOR,
+  group: GROUP_ON_PAGE,
+  keywords: ["retarget", "rename invocation"],
+  inputs: {
+    content: wikitextPort,
+    oldName: oldNamePort,
+    newName: newNamePort,
+  },
+  outputs: {
+    content: updatedWikitextPort,
+  },
+  execute: (inputs) => {
+    requireTemplateName(inputs.oldName);
+    requireTemplateName(inputs.newName);
+    return {
+      content: renameTemplateInContent(
+        requireContent(inputs.content),
+        inputs.oldName,
+        inputs.newName,
+      ),
+    };
+  },
+};
+
+const pageIndentTemplates: NodeSpec = {
+  typeId: "wiki/page-indent-templates",
+  displayName: "Indent templates",
+  description:
+    "Reformat matching {{templates}} to multi-line | name = value, including nested invocations. Leave Template name empty to indent every invocation on the page.",
+  color: MW_COLOR,
+  group: GROUP_ON_PAGE,
+  keywords: ["pretty", "format", "awb", "indent"],
+  inputs: {
+    content: wikitextPort,
+    name: {
+      ...templateNamePort,
+      description:
+        "Template name to indent (Template: prefix optional). Empty = all invocations.",
+    },
+  },
+  outputs: {
+    content: updatedWikitextPort,
+  },
+  execute: (inputs) => ({
+    content: indentTemplatesInContent(
+      requireContent(inputs.content),
+      inputs.name ?? "",
+    ),
+  }),
+};
+
+const pageDeleteTemplates: NodeSpec = {
+  typeId: "wiki/page-delete-templates",
+  displayName: "Delete templates",
+  description:
+    "Remove every {{template}} with this name from the page, including nested invocations inside other templates.",
+  color: MW_COLOR,
+  group: GROUP_ON_PAGE,
+  keywords: ["remove", "delete", "strip"],
+  inputs: {
+    content: wikitextPort,
+    name: templateNamePort,
+  },
+  outputs: {
+    content: updatedWikitextPort,
+  },
+  execute: (inputs) => {
+    requireTemplateName(inputs.name);
+    return {
+      content: deleteTemplatesByNameInContent(
+        requireContent(inputs.content),
+        inputs.name,
+      ),
+    };
+  },
+};
+
+const pageRenameParameter: NodeSpec = {
+  typeId: "wiki/page-rename-parameter",
+  displayName: "Rename parameter",
+  description:
+    "Rename a parameter key on every matching {{template}}, including nested invocations. Wikitext in, wikitext out.",
+  color: MW_COLOR,
+  group: GROUP_PARAMS,
+  keywords: ["rdp", "rename key"],
+  inputs: {
+    content: wikitextPort,
+    name: templateNamePort,
+    oldParameter: oldParameterPort,
+    newParameter: newParameterPort,
+  },
+  outputs: {
+    content: updatedWikitextPort,
+  },
+  execute: (inputs) => {
+    requireTemplateName(inputs.name);
+    return {
+      content: renameParameterInContent(
+        requireContent(inputs.content),
+        inputs.name,
+        asString(inputs.oldParameter),
+        asString(inputs.newParameter),
+      ),
+    };
+  },
+};
+
+const pageSetParameter: NodeSpec = {
+  typeId: "wiki/page-set-parameter",
+  displayName: "Set parameter",
+  description:
+    "Set or add a named or positional parameter on every matching {{template}}, including nested invocations. The value is parsed as wikitext.",
+  color: MW_COLOR,
+  group: GROUP_PARAMS,
+  keywords: ["set arg", "add param"],
+  inputs: {
+    content: wikitextPort,
+    name: templateNamePort,
+    parameter: parameterPort,
+    value: paramValuePort,
+  },
+  outputs: {
+    content: updatedWikitextPort,
+  },
+  execute: (inputs) => {
+    requireTemplateName(inputs.name);
+    return {
+      content: setParameterInContent(
+        requireContent(inputs.content),
+        inputs.name,
+        asString(inputs.parameter),
+        asString(inputs.value),
+      ),
+    };
+  },
+};
+
+const pageRemoveParameter: NodeSpec = {
+  typeId: "wiki/page-remove-parameter",
+  displayName: "Remove parameter",
+  description:
+    "Remove a named or positional parameter from every matching {{template}}, including nested invocations.",
+  color: MW_COLOR,
+  group: GROUP_PARAMS,
+  keywords: ["delete param", "drop"],
+  inputs: {
+    content: wikitextPort,
+    name: templateNamePort,
+    parameter: parameterPort,
+  },
+  outputs: {
+    content: updatedWikitextPort,
+  },
+  execute: (inputs) => {
+    requireTemplateName(inputs.name);
+    return {
+      content: removeParameterInContent(
+        requireContent(inputs.content),
+        inputs.name,
+        asString(inputs.parameter),
+      ),
+    };
+  },
+};
+
+const pageSwapParameters: NodeSpec = {
+  typeId: "wiki/page-swap-parameters",
+  displayName: "Swap parameters",
+  description:
+    "Swap two parameter values on every matching {{template}}, including nested invocations. Missing parameters are created blank, then swapped.",
+  color: MW_COLOR,
+  group: GROUP_PARAMS,
+  keywords: ["swap", "exchange", "positional"],
+  inputs: {
+    content: wikitextPort,
+    name: templateNamePort,
+    parameterA: {
+      ...parameterPort,
+      label: "Parameter A",
+      description: "First parameter (named key or positional index).",
+    },
+    parameterB: {
+      ...parameterPort,
+      label: "Parameter B",
+      description: "Second parameter (named key or positional index).",
+    },
+  },
+  outputs: {
+    content: updatedWikitextPort,
+  },
+  execute: (inputs) => {
+    requireTemplateName(inputs.name);
+    return {
+      content: swapParametersInContent(
+        requireContent(inputs.content),
+        inputs.name,
+        asString(inputs.parameterA),
+        asString(inputs.parameterB),
+      ),
+    };
+  },
+};
+
+const pageGetParameter: NodeSpec = {
+  typeId: "wiki/page-get-parameter",
+  displayName: "Get parameter",
+  description:
+    'Parameter value from the nth matching {{template}} (1-based, nested included). Missing invocation or parameter → empty string.',
+  color: MW_COLOR,
+  group: GROUP_PARAMS,
+  keywords: ["get arg", "read param", "skip"],
+  inputs: {
+    content: wikitextPort,
+    name: templateNamePort,
+    parameter: parameterPort,
+    n: {
+      type: "number",
+      defaultValue: 1,
+      userOnly: true,
+      label: "Index",
+      description:
+        "1-based match among invocations of this template name (preorder).",
+    },
+  },
+  outputs: {
+    result: {
+      type: "string",
+      label: "Value",
+      description: "Parameter wikitext, or empty if missing.",
+    },
+  },
+  execute: (inputs) => {
+    requireTemplateName(inputs.name);
+    return {
+      result: getParameterInContent(
+        requireContent(inputs.content),
+        inputs.name,
+        asString(inputs.parameter),
+        Number(inputs.n),
+      ),
+    };
+  },
+};
+
+const pageHasParameter: NodeSpec = {
+  typeId: "wiki/page-has-parameter",
+  displayName: "Has parameter",
+  description:
+    "True if any matching {{template}} on the page (nested included) has the given parameter. Useful on the skip graph.",
+  color: MW_COLOR,
+  group: GROUP_PARAMS,
+  keywords: ["contains param", "skip"],
+  inputs: {
+    content: wikitextPort,
+    name: templateNamePort,
+    parameter: parameterPort,
+  },
+  outputs: {
+    result: {
+      type: "boolean",
+      label: "Result",
+      description: "True if at least one matching invocation has that parameter.",
+    },
+  },
+  execute: (inputs) => {
+    requireTemplateName(inputs.name);
+    return {
+      result: contentHasTemplateParameter(
+        requireContent(inputs.content),
+        inputs.name,
+        asString(inputs.parameter),
       ),
     };
   },
@@ -1037,9 +1308,9 @@ const parseTemplates: NodeSpec = {
   typeId: "wiki/parse-templates",
   displayName: "Parse templates",
   description:
-    "Turn page wikitext into a list of top-level {{template}} invocations. Nested templates stay inside parameter values, not as extra list items.",
+    "Turn page wikitext into a list of top-level {{template}} invocations. Nested templates stay inside parameter values, not as extra list items. For everyday edits prefer the wikitext nodes under on the page / parameters.",
   color: MW_COLOR,
-  group: GROUP_ON_PAGE,
+  group: GROUP_LIST,
   keywords: ["forest", "extract", "parse"],
   inputs: {
     content: wikitextPort,
@@ -1054,12 +1325,12 @@ const parseTemplates: NodeSpec = {
 
 const findTemplatesByNameInContent: NodeSpec = {
   typeId: "wiki/find-templates-by-name",
-  displayName: "Find by name",
+  displayName: "Find by name (deprecated)",
   description:
-    "List matching invocations anywhere on the page, including nested. For edits use Rename parameter or Indent matching templates. Do not Write templates back if this list includes nested hits.",
+    "Deprecated until v1.0.0. List matching invocations anywhere on the page, including nested. Do not Write templates back if this list includes nested hits. Prefer Get parameter or Has parameter on the page.",
   color: MW_COLOR,
-  group: GROUP_LOOKUP,
-  keywords: ["nested", "search", "find"],
+  group: GROUP_DEPRECATED,
+  keywords: ["nested", "search", "find", "deprecated"],
   inputs: {
     content: wikitextPort,
     name: templateNamePort,
@@ -1085,7 +1356,7 @@ const filterTemplatesByNameNode: NodeSpec = {
   description:
     "Keep items in the wired list whose name matches. Does not walk inside parameters.",
   color: MW_COLOR,
-  group: GROUP_LOOKUP,
+  group: GROUP_LIST,
   keywords: ["filter", "shallow"],
   inputs: {
     templates: templatesPort,
@@ -1217,7 +1488,7 @@ const getTemplateName: NodeSpec = {
   description:
     "Name of the sole template. Errors if the list is not length 1. Use Nth template first to pick one item.",
   color: MW_COLOR,
-  group: GROUP_LOOKUP,
+  group: GROUP_LIST,
   keywords: ["name"],
   inputs: {
     templates: templatesPort,
@@ -1240,7 +1511,7 @@ const getParameter: NodeSpec = {
   description:
     'Parameter value from the sole template (named key or positional "1"). Errors if the list is not length 1. Missing → empty string.',
   color: MW_COLOR,
-  group: GROUP_PARAMS,
+  group: GROUP_LIST,
   keywords: ["get arg", "read param"],
   inputs: {
     templates: templatesPort,
@@ -1267,7 +1538,7 @@ const removeParameter: NodeSpec = {
   description:
     "Remove a named or positional parameter from each template in the list.",
   color: MW_COLOR,
-  group: GROUP_PARAMS,
+  group: GROUP_LIST,
   keywords: ["delete param", "drop"],
   inputs: {
     templates: templatesPort,
@@ -1292,7 +1563,7 @@ const setParameter: NodeSpec = {
   description:
     "Set or add a named or positional parameter on each template in the list. The value is parsed as wikitext (nested {{templates}} allowed).",
   color: MW_COLOR,
-  group: GROUP_PARAMS,
+  group: GROUP_LIST,
   keywords: ["set arg", "add param"],
   inputs: {
     templates: templatesPort,
@@ -1319,7 +1590,7 @@ const swapParameters: NodeSpec = {
   description:
     "Swap two parameter values on each template in the list. Works for named keys and positional indexes. If a parameter is missing, it is created blank, then the values are swapped.",
   color: MW_COLOR,
-  group: GROUP_PARAMS,
+  group: GROUP_LIST,
   keywords: ["swap", "exchange", "positional"],
   inputs: {
     templates: templatesPort,
@@ -1353,7 +1624,7 @@ const hasParameter: NodeSpec = {
   displayName: "Has parameter",
   description: "True if any template in the list has the given parameter.",
   color: MW_COLOR,
-  group: GROUP_PARAMS,
+  group: GROUP_LIST,
   keywords: ["contains param"],
   inputs: {
     templates: templatesPort,
@@ -1401,7 +1672,7 @@ const applyTemplates: NodeSpec = {
   description:
     "Replace each root template span in the page with its serialized form. Errors if the list mixes nested spans with their parents — use Parse, not Find by name.",
   color: MW_COLOR,
-  group: GROUP_ON_PAGE,
+  group: GROUP_LIST,
   keywords: ["apply", "serialize", "write back"],
   inputs: {
     content: wikitextPort,
@@ -1420,12 +1691,12 @@ const applyTemplates: NodeSpec = {
 
 const mapTemplatesByNameNode: NodeSpec = {
   typeId: "wiki/map-templates-by-name",
-  displayName: "Indent matching templates",
+  displayName: "Indent matching templates (deprecated)",
   description:
-    "Walk matching template names (including nested) and optionally indent them. Does not rename or set parameters. Wire wikitext or a Parsed templates list; the output is the same kind.",
+    "Deprecated until v1.0.0. Use Indent templates (wikitext in/out). Walk matching names (including nested) and optionally indent them. Wire wikitext or a Parsed templates list; the output is the same kind.",
   color: MW_COLOR,
-  group: GROUP_ON_PAGE,
-  keywords: ["map", "nested", "indent"],
+  group: GROUP_DEPRECATED,
+  keywords: ["map", "nested", "indent", "deprecated"],
   inputs: {
     source: pageOrTemplatesPort,
     name: templateNamePort,
@@ -1463,7 +1734,7 @@ const deleteTemplatesFromContent: NodeSpec = {
   description:
     "Strip root template spans from the page. Nested-only lists are rejected — use Parse, not Find by name.",
   color: MW_COLOR,
-  group: GROUP_ON_PAGE,
+  group: GROUP_LIST,
   keywords: ["remove", "delete", "strip"],
   inputs: {
     content: wikitextPort,
@@ -1551,6 +1822,15 @@ export const mediaWikiNodes: NodeSpecRegistry = {
   [stringToTitle.typeId]: stringToTitle,
   [inCategory.typeId]: inCategory,
   [contentHasTemplateNode.typeId]: contentHasTemplateNode,
+  [pageRenameTemplate.typeId]: pageRenameTemplate,
+  [pageIndentTemplates.typeId]: pageIndentTemplates,
+  [pageDeleteTemplates.typeId]: pageDeleteTemplates,
+  [pageRenameParameter.typeId]: pageRenameParameter,
+  [pageSetParameter.typeId]: pageSetParameter,
+  [pageRemoveParameter.typeId]: pageRemoveParameter,
+  [pageSwapParameters.typeId]: pageSwapParameters,
+  [pageGetParameter.typeId]: pageGetParameter,
+  [pageHasParameter.typeId]: pageHasParameter,
   [renameTemplate.typeId]: renameTemplate,
   [renameParameter.typeId]: renameParameter,
   [replaceDeprecatedParameters.typeId]: replaceDeprecatedParameters,

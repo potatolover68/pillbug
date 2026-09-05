@@ -84,7 +84,7 @@ function tryInstantiate(
 
 function buildProcessDemo(nodeMap: NodeMap): GraphDocument | null {
   const { input, output } = boundaryNodes(nodeMap);
-  const rename = tryInstantiate(nodeMap, "wiki/rename-parameter", {
+  const rename = tryInstantiate(nodeMap, "wiki/page-rename-parameter", {
     x: 280,
     y: 100,
   });
@@ -104,7 +104,7 @@ function buildProcessDemo(nodeMap: NodeMap): GraphDocument | null {
   const connections: Connection[] = [];
 
   if (rename) {
-    setInputValue(rename, "template", "infobox golf tournament");
+    setInputValue(rename, "name", "infobox golf tournament");
     setInputValue(rename, "oldParameter", "map");
     setInputValue(rename, "newParameter", "pushpin_map");
     nodes.push(rename);
@@ -113,15 +113,15 @@ function buildProcessDemo(nodeMap: NodeMap): GraphDocument | null {
   nodes.push(outputNode);
 
   if (rename && retf) {
-    const a = wire(inputNode, "Content", rename, "source");
-    const b = wire(rename, "result", retf, "content");
+    const a = wire(inputNode, "Content", rename, "content");
+    const b = wire(rename, "content", retf, "content");
     const c = wire(retf, "content", outputNode, "ContentAfter");
     for (const conn of [a, b, c]) {
       if (conn) connections.push(conn);
     }
   } else if (rename) {
-    const a = wire(inputNode, "Content", rename, "source");
-    const b = wire(rename, "result", outputNode, "ContentAfter");
+    const a = wire(inputNode, "Content", rename, "content");
+    const b = wire(rename, "content", outputNode, "ContentAfter");
     for (const conn of [a, b]) {
       if (conn) connections.push(conn);
     }

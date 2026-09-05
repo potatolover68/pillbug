@@ -551,6 +551,183 @@ export function mapTemplatesInContent(
   return applyTemplatesToContent(content, mapped);
 }
 
+/** Parse content, deep-map every template, write roots back. */
+export function mapAllTemplatesInContent(
+  content: string,
+  fn: (t: Template) => Template,
+): string {
+  const roots = templatesFromContent(content);
+  return applyTemplatesToContent(content, mapAllTemplates(roots, fn));
+}
+
+export function renameTemplateInContent(
+  content: string,
+  oldName: unknown,
+  newName: unknown,
+): string {
+  const want = templateName(oldName);
+  const next = writeTemplateName(templateName(newName));
+  if (!want || !next) return content;
+  return mapTemplatesInContent(content, want, (t) => setTemplateName(t, next));
+}
+
+export function renameParameterInContent(
+  content: string,
+  name: unknown,
+  oldParameter: string,
+  newParameter: string,
+): string {
+  const want = templateName(name);
+  if (!want) return content;
+  return mapTemplatesInContent(content, want, (t) =>
+    renameTemplateParameterKey(t, oldParameter, newParameter),
+  );
+}
+
+export function setParameterInContent(
+  content: string,
+  name: unknown,
+  parameter: string,
+  value: string,
+): string {
+  const want = templateName(name);
+  if (!want) return content;
+  return mapTemplatesInContent(content, want, (t) =>
+    setTemplateParameter(t, parameter, value),
+  );
+}
+
+export function removeParameterInContent(
+  content: string,
+  name: unknown,
+  parameter: string,
+): string {
+  const want = templateName(name);
+  if (!want) return content;
+  return mapTemplatesInContent(content, want, (t) =>
+    removeTemplateParameter(t, parameter),
+  );
+}
+
+export function swapParametersInContent(
+  content: string,
+  name: unknown,
+  parameterA: string,
+  parameterB: string,
+): string {
+  const want = templateName(name);
+  if (!want) return content;
+  return mapTemplatesInContent(content, want, (t) =>
+    swapTemplateParameters(t, parameterA, parameterB),
+  );
+}
+
+/** Indent matching names (nested included). Empty name indents every invocation. */
+export function indentTemplatesInContent(
+  content: string,
+  name: unknown,
+): string {
+  const want = templateName(name).trim();
+  const fn = (t: Template): Template => indentTemplate(t);
+  if (!want) return mapAllTemplatesInContent(content, fn);
+  return mapTemplatesInContent(content, want, fn);
+}
+
+function deleteMatchingFromChunks(
+  chunks: WikitextChunk[],
+  want: string,
+): WikitextChunk[] {
+  const out: WikitextChunk[] = [];
+  let changed = false;
+  for (const c of chunks) {
+    if (c.kind === "text") {
+      out.push(c);
+      continue;
+    }
+    if (templateNamesMatch(c.template.name, want)) {
+      changed = true;
+      continue;
+    }
+    const next = deleteMatchingFromTemplate(c.template, want);
+    if (next !== c.template) {
+      changed = true;
+      out.push({ kind: "template", template: next });
+    } else {
+      out.push(c);
+    }
+  }
+  return changed ? out : chunks;
+}
+
+function deleteMatchingFromTemplate(t: Template, want: string): Template {
+  let anyChanged = false;
+  const params = t.params.map((p) => {
+    const value = deleteMatchingFromChunks(p.value, want);
+    if (value !== p.value) {
+      anyChanged = true;
+      return { ...p, value };
+    }
+    return p;
+  });
+  if (!anyChanged) return t;
+  return { ...t, params, pristine: false };
+}
+
+/** Remove matching invocations at any depth (roots and nested). */
+export function deleteTemplatesByNameInContent(
+  content: string,
+  name: unknown,
+): string {
+  const want = templateName(name);
+  if (!want) return content;
+  return serializePage(deleteMatchingFromChunks(parsePage(content), want));
+}
+
+/**
+ * Parameter value from the nth matching invocation (1-based, preorder).
+ * Missing match or missing parameter → empty string.
+ */
+export function getParameterInContent(
+  content: string,
+  name: unknown,
+  parameter: string,
+  n = 1,
+): string {
+  const want = templateName(name);
+  if (!want) return "";
+  const parsed = Math.floor(Number(n));
+  const index = Number.isFinite(parsed) && parsed >= 1 ? parsed : 1;
+  let seen = 0;
+  let result = "";
+  walkTemplates(templatesFromContent(content), (t) => {
+    if (!templateNamesMatch(t.name, want)) return;
+    seen += 1;
+    if (seen === index) result = getTemplateParameter(t, parameter);
+  });
+  return result;
+}
+
+/** True if any matching invocation (nested included) has the parameter. */
+export function contentHasTemplateParameter(
+  content: string,
+  name: unknown,
+  parameter: string,
+): boolean {
+  const want = templateName(name);
+  if (!want) return false;
+  let found = false;
+  walkTemplates(templatesFromContent(content), (t) => {
+    if (found) return;
+    if (
+      templateNamesMatch(t.name, want) &&
+      templateHasParameter(t, parameter)
+    ) {
+      found = true;
+    }
+  });
+  return found;
+}
+
 export function templatesFromContent(content: string): Template[] {
   return pageRoots(parsePage(content));
 }

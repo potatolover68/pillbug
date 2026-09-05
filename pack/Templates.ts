@@ -94,7 +94,7 @@ export const Templates: TypeSpec = {
   label: "Parsed templates",
   color: TEMPLATES_COLOR,
   description:
-    "A list of top-level {{template}} invocations from the page. Nested templates live inside parameter values, not as extra list items. Write templates back needs this root list — do not Apply a nested Find-by-name result. An empty list is valid.",
+    "A list of top-level {{template}} invocations from the page. Nested templates live inside parameter values, not as extra list items. Everyday edits use the wikitext nodes (Rename/Set/Indent on the page). Write templates back needs this root list — do not Apply a nested Find-by-name result. An empty list is valid.",
   widgets: {
     default: {
       kind: "none",
