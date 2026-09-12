@@ -1,6 +1,7 @@
-import type { NodeSpec, NodeSpecRegistry } from "@nodish/core";
+import type { ExecuteContext, NodeSpec, NodeSpecRegistry } from "@nodish/core";
 import { realizeNewlines } from "./newlines";
-import { parseChoiceJson, publicAiChatCompletionsSync } from "./publicai";
+import { parseChoiceJson, publicAiChatCompletions } from "./publicai";
+import { resolveUnknownParametersExecute } from "./resolveUnknown";
 import {
   AI_CLIENT_TYPE,
   AI_SECRET_TYPE,
@@ -70,9 +71,10 @@ const choose: NodeSpec = {
   typeId: "ai/choose",
   displayName: "AI choose",
   description:
-    "Ask Public AI to pick one of N option strings given a prompt and data. Returns the chosen string and reasoning. Uses sync XHR via /publicai (blocks the UI while waiting). Experimental.",
+    "Ask Public AI to pick one of N option strings given a prompt and data. Returns the chosen string and reasoning. Experimental.",
   color: AI_COLOR,
   group: ["AI"],
+  io: true,
   inputs: {
     client: { type: AI_CLIENT_TYPE },
     prompt: {
@@ -128,7 +130,7 @@ const choose: NodeSpec = {
       },
     };
   },
-  execute: (inputs) => {
+  execute: async (inputs, ctx: ExecuteContext) => {
     const client = asPublicAiClient(inputs.client);
     if (client.disable) {
       return { choice: null, reasoning: null };
@@ -162,17 +164,64 @@ The "choice" value must match one option exactly. If an option contains newlines
       data || "(empty)",
     ].join("\n");
 
-    const { content } = publicAiChatCompletionsSync({
+    const { content } = await publicAiChatCompletions({
       apiKey: client.apiKey,
       model: client.model,
       messages: [
         { role: "system", content: system },
         { role: "user", content: user },
       ],
+      signal: ctx.signal,
     });
 
     return parseChoiceJson(content, options);
   },
+};
+
+const resolveUnknownParameters: NodeSpec = {
+  typeId: "ai/resolve-unknown-parameters",
+  displayName: "Resolve unknown parameters",
+  description:
+    "Load Check for unknown/conflicting parameters from Template:name and ask Public AI to rename or drop unknown keys on matching invocations (nested included). One constrained choice per unknown, capped by maxCalls. Experimental, and very, very stupid, and slow.",
+  color: AI_COLOR,
+  group: ["AI", "MediaWiki"],
+  keywords: ["unknown", "infobox", "parameters", "rdp"],
+  io: true,
+  inputs: {
+    client: { type: AI_CLIENT_TYPE },
+    name: {
+      type: "string",
+      types: ["wiki/title", "string"],
+      defaultValue: "",
+      label: "Template name",
+      description: "Template name (Template: prefix optional).",
+    },
+    content: {
+      type: "string",
+      defaultValue: "",
+      label: "Wikitext",
+      customProps: { rows: 5 },
+    },
+    maxCalls: {
+      type: "number",
+      userOnly: true,
+      defaultValue: 8,
+      label: "Max AI calls",
+      description: "Cap Public AI calls per page.",
+    },
+  },
+  outputs: {
+    content: {
+      type: "string",
+      label: "Updated wikitext",
+    },
+    reasoning: {
+      type: "string",
+      label: "Reasoning",
+      description: "rename A to B; drop C. Wire to output reasoning.",
+    },
+  },
+  execute: (inputs, ctx) => resolveUnknownParametersExecute(inputs, ctx),
 };
 
 const realizeNewlinesNode: NodeSpec = {
@@ -200,5 +249,6 @@ const realizeNewlinesNode: NodeSpec = {
 export const aiNodes: NodeSpecRegistry = {
   [publicAiClient.typeId]: publicAiClient,
   [choose.typeId]: choose,
+  [resolveUnknownParameters.typeId]: resolveUnknownParameters,
   [realizeNewlinesNode.typeId]: realizeNewlinesNode,
 };

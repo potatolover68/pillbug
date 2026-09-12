@@ -9,6 +9,7 @@ import {
   type NodeMap,
   type Port,
 } from "@nodish/core";
+import { importProcessGraph } from "../../nodish/createAppNodeMap";
 import { map, skipMap } from "../shared/maps";
 import {
   capturePreviewState,
@@ -184,7 +185,7 @@ export function beginCodeTourDemo(): void {
 
   const processDemo = buildProcessDemo(map.value);
   if (processDemo) {
-    importGraph(map.value, processDemo);
+    importProcessGraph(map.value, processDemo);
   }
 
   const skipDemo = buildSkipDemo(skipMap.value);
@@ -201,7 +202,7 @@ export function endCodeTourDemo(): void {
   if (!snap) return;
   codeTourSnapshot = null;
 
-  importGraph(map.value, snap.process);
+  importProcessGraph(map.value, snap.process);
   importGraph(skipMap.value, snap.skip);
   restorePreviewState(snap.preview);
   syncPreviewInputs();

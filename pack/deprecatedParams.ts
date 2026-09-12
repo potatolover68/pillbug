@@ -401,7 +401,7 @@ export function parseRedirectTarget(content: string): string | null {
 
 const MAX_REDIRECTS = 5;
 
-type LoadedTemplate = {
+export type LoadedTemplate = {
   source: string;
   matchNames: string[];
 };
@@ -412,7 +412,7 @@ function addMatchName(names: Set<string>, title: string): void {
 }
 
 /** Fetch template wikitext, following redirects; collect all names along the chain. */
-function loadTemplateSourceSync(titleKey: string): LoadedTemplate {
+export function loadTemplateSourceSync(titleKey: string): LoadedTemplate {
   const matchNames = new Set<string>();
   addMatchName(matchNames, titleKey);
   let current = titleKey;
@@ -438,14 +438,15 @@ function loadTemplateSourceSync(titleKey: string): LoadedTemplate {
   throw new Error(`Too many template redirects starting at ${titleKey}`);
 }
 
-async function loadTemplateSourceAsync(
+export async function loadTemplateSourceAsync(
   titleKey: string,
+  signal?: AbortSignal,
 ): Promise<LoadedTemplate> {
   const matchNames = new Set<string>();
   addMatchName(matchNames, titleKey);
   let current = titleKey;
   for (let i = 0; i < MAX_REDIRECTS; i++) {
-    const page = await fetchPageContentsAsync(current);
+    const page = await fetchPageContentsAsync(current, signal);
     if (!page.exists) {
       throw new Error(`Template page not found: ${current}`);
     }
@@ -484,6 +485,7 @@ function resolveDeprecatedParamsSync(title: unknown): ResolvedRules {
 
 async function resolveDeprecatedParamsAsync(
   title: unknown,
+  signal?: AbortSignal,
 ): Promise<ResolvedRules> {
   const key = resolveTemplatePageTitle(title);
 
@@ -498,7 +500,7 @@ async function resolveDeprecatedParamsAsync(
     return { rules: fromIdb.rules, matchNames: fromIdb.matchNames };
   }
 
-  const loaded = await loadTemplateSourceAsync(key);
+  const loaded = await loadTemplateSourceAsync(key, signal);
   const rules = parseDeprecatedRulesFromTemplateSource(loaded.source);
   const entry: TimedRules = {
     rules,
@@ -678,12 +680,16 @@ export function replaceDeprecatedParametersInContent(
   return applyRulesToContent(matchNames, content, fixindent, rules);
 }
 
-/** Async apply — for RDP / userscripts (IndexedDB-backed rules cache). */
+/** Async apply — nodish `io` nodes and RDP / userscripts. */
 export async function replaceDeprecatedParametersInContentAsync(
   title: unknown,
   content: string,
   fixindent: boolean,
+  signal?: AbortSignal,
 ): Promise<string> {
-  const { rules, matchNames } = await resolveDeprecatedParamsAsync(title);
+  const { rules, matchNames } = await resolveDeprecatedParamsAsync(
+    title,
+    signal,
+  );
   return applyRulesToContent(matchNames, content, fixindent, rules);
 }

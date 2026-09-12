@@ -1,3 +1,4 @@
+import { isAbortError } from "@nodish/core";
 import type { WikiPage } from "./client";
 import { pageQueue, removeFromQueue } from "./queue";
 import {
@@ -24,6 +25,19 @@ const pagePrepCache = new Map<string, PrepEntry>();
 let prefetchGeneration = 0;
 let prefetchRunning = false;
 let shouldPrefetch = false;
+let prefetchAbort: AbortController | null = null;
+
+function bumpPrefetchGeneration(): AbortController {
+  prefetchGeneration += 1;
+  prefetchAbort?.abort();
+  prefetchAbort = new AbortController();
+  return prefetchAbort;
+}
+
+function prefetchSignal(): AbortSignal {
+  if (!prefetchAbort) prefetchAbort = new AbortController();
+  return prefetchAbort.signal;
+}
 
 type SkipLogFn = (entry: {
   page: string;
@@ -32,6 +46,7 @@ type SkipLogFn = (entry: {
   applied: boolean;
   skipped: boolean;
   undone: boolean;
+  reasoning?: string | null;
 }) => void;
 
 type ErrorFn = (message: string) => void;
@@ -49,7 +64,7 @@ export function configurePrefetchHooks(hooks: {
 }
 
 export function clearPrefetch(): void {
-  prefetchGeneration += 1;
+  bumpPrefetchGeneration();
   shouldPrefetch = false;
   prefetchRunning = false;
   pagePrepCache.clear();
@@ -134,10 +149,11 @@ export async function takeNextPrepared(signal?: AbortSignal): Promise<{
 
     if (cached?.status === "content") {
       if (signal?.aborted) return null;
-      const outcome = runProcessOnly(
+      const outcome = await runProcessOnly(
         cached.page.titleObj,
         cached.page.content,
         cached.page.prefixed,
+        signal,
       );
       if (signal?.aborted) return null;
       if (handleAutoOutcome(raw, outcome) === "removed") continue;
@@ -151,31 +167,38 @@ export async function takeNextPrepared(signal?: AbortSignal): Promise<{
 
       const mode: PrefetchMode = prefetchMode.value;
       if (mode === "A") {
-        const skip = runSkipOnly(page.titleObj, page.content, page.prefixed);
+        const skip = await runSkipOnly(
+          page.titleObj,
+          page.content,
+          page.prefixed,
+          signal,
+        );
         if (signal?.aborted) return null;
         if (skip.kind !== "continue") {
           if (handleAutoOutcome(raw, skip) === "removed") continue;
         }
-        const outcome = runProcessOnly(
+        const outcome = await runProcessOnly(
           page.titleObj,
           page.content,
           page.prefixed,
+          signal,
         );
         if (signal?.aborted) return null;
         if (handleAutoOutcome(raw, outcome) === "removed") continue;
         return { page, outcome };
       }
 
-      const outcome = runGraphsForPage(
+      const outcome = await runGraphsForPage(
         page.titleObj,
         page.content,
         page.prefixed,
+        signal,
       );
       if (signal?.aborted) return null;
       if (handleAutoOutcome(raw, outcome) === "removed") continue;
       return { page, outcome };
     } catch (error) {
-      if (signal?.aborted) return null;
+      if (signal?.aborted || isAbortError(error)) return null;
       const message = error instanceof Error ? error.message : String(error);
       onAutoError?.(`${raw}: ${message}`);
       removeFromQueue(raw);
@@ -193,7 +216,7 @@ export function ensurePrefetch(): void {
 
 export function stopPrefetch(): void {
   shouldPrefetch = false;
-  prefetchGeneration += 1;
+  bumpPrefetchGeneration();
 }
 
 async function runPrefetchLoop(): Promise<void> {
@@ -219,7 +242,12 @@ async function runPrefetchLoop(): Promise<void> {
         if (!prefetchStillActive(gen)) break;
 
         if (mode === "A") {
-          const skip = runSkipOnly(page.titleObj, page.content, page.prefixed);
+          const skip = await runSkipOnly(
+            page.titleObj,
+            page.content,
+            page.prefixed,
+            prefetchSignal(),
+          );
           if (!prefetchStillActive(gen)) break;
           if (skip.kind !== "continue") {
             handleAutoOutcome(next, skip);
@@ -235,10 +263,11 @@ async function runPrefetchLoop(): Promise<void> {
             });
           }
         } else {
-          const outcome = runGraphsForPage(
+          const outcome = await runGraphsForPage(
             page.titleObj,
             page.content,
             page.prefixed,
+            prefetchSignal(),
           );
           if (!prefetchStillActive(gen)) break;
           if (handleAutoOutcome(next, outcome) === "removed") continue;
@@ -256,7 +285,7 @@ async function runPrefetchLoop(): Promise<void> {
           }
         }
       } catch (error) {
-        if (!prefetchStillActive(gen)) break;
+        if (!prefetchStillActive(gen) || isAbortError(error)) break;
         const message = error instanceof Error ? error.message : String(error);
         onAutoError?.(`${next}: ${message}`);
         removeFromQueue(next);

@@ -1,9 +1,11 @@
 /**
- * Blocking wiki page read for nodish execute (sync-only).
- * Uses synchronous XHR through the same-origin `/w/api.php` proxy.
+ * Wiki page read for nodish `io` nodes (async fetch) and RDP sync execute.
+ * Uses the same-origin `/w/api.php` proxy.
  */
 import {
+  isAbortError,
   setPageContentsFetcher,
+  setPageContentsFetcherAsync,
   type PageContentsResult,
 } from "../../pack/pageContents";
 import { setWikiOriginProvider } from "../../pack/deprecatedParams";
@@ -61,44 +63,10 @@ function resolvedTitleFromQuery(
   return typeof page.title === "string" ? page.title : undefined;
 }
 
-function fetchPageContentsSync(title: string): PageContentsResult {
-  const trimmed = title.trim();
-  if (!trimmed) {
-    return { exists: false, content: "" };
-  }
-
-  const params = new URLSearchParams({
-    action: "query",
-    format: "json",
-    prop: "revisions",
-    rvprop: "content",
-    rvslots: "main",
-    redirects: "1",
-    titles: trimmed,
-  });
-  const url = `/w/api.php?${params.toString()}`;
-
-  const xhr = new XMLHttpRequest();
-  xhr.open("GET", url, false);
-  xhr.setRequestHeader(WIKI_ORIGIN_HEADER, normalizedWikiOrigin());
-  xhr.withCredentials = true;
-  try {
-    xhr.send(null);
-  } catch (err) {
-    throw new Error(
-      err instanceof Error
-        ? `Failed to fetch page: ${err.message}`
-        : "Failed to fetch page",
-    );
-  }
-
-  if (xhr.status < 200 || xhr.status >= 300) {
-    throw new Error(`Failed to fetch page (HTTP ${xhr.status})`);
-  }
-
+function parseQueryResponse(text: string): PageContentsResult {
   let data: QueryResponse;
   try {
-    data = JSON.parse(xhr.responseText) as QueryResponse;
+    data = JSON.parse(text) as QueryResponse;
   } catch {
     throw new Error("Failed to parse wiki API response");
   }
@@ -127,9 +95,82 @@ function fetchPageContentsSync(title: string): PageContentsResult {
   return { exists: false, content: "" };
 }
 
-/** Register the sync fetcher used by wiki/get-page-contents. */
+function queryUrl(title: string): string {
+  const params = new URLSearchParams({
+    action: "query",
+    format: "json",
+    prop: "revisions",
+    rvprop: "content",
+    rvslots: "main",
+    redirects: "1",
+    titles: title,
+  });
+  return `/w/api.php?${params.toString()}`;
+}
+
+function fetchPageContentsSync(title: string): PageContentsResult {
+  const trimmed = title.trim();
+  if (!trimmed) {
+    return { exists: false, content: "" };
+  }
+
+  const xhr = new XMLHttpRequest();
+  xhr.open("GET", queryUrl(trimmed), false);
+  xhr.setRequestHeader(WIKI_ORIGIN_HEADER, normalizedWikiOrigin());
+  xhr.withCredentials = true;
+  try {
+    xhr.send(null);
+  } catch (err) {
+    throw new Error(
+      err instanceof Error
+        ? `Failed to fetch page: ${err.message}`
+        : "Failed to fetch page",
+    );
+  }
+
+  if (xhr.status < 200 || xhr.status >= 300) {
+    throw new Error(`Failed to fetch page (HTTP ${xhr.status})`);
+  }
+
+  return parseQueryResponse(xhr.responseText);
+}
+
+async function fetchPageContentsViaFetch(
+  title: string,
+  signal?: AbortSignal,
+): Promise<PageContentsResult> {
+  const trimmed = title.trim();
+  if (!trimmed) {
+    return { exists: false, content: "" };
+  }
+
+  let res: Response;
+  try {
+    res = await fetch(queryUrl(trimmed), {
+      credentials: "include",
+      headers: { [WIKI_ORIGIN_HEADER]: normalizedWikiOrigin() },
+      signal,
+    });
+  } catch (err) {
+    if (isAbortError(err)) throw err;
+    throw new Error(
+      err instanceof Error
+        ? `Failed to fetch page: ${err.message}`
+        : "Failed to fetch page",
+    );
+  }
+
+  if (res.status < 200 || res.status >= 300) {
+    throw new Error(`Failed to fetch page (HTTP ${res.status})`);
+  }
+
+  return parseQueryResponse(await res.text());
+}
+
+/** Register fetchers used by wiki/get-page-contents and RDP. */
 export function installPageContentsFetcher(): void {
   setPageContentsFetcher(fetchPageContentsSync);
+  setPageContentsFetcherAsync(fetchPageContentsViaFetch);
 }
 
 installPageContentsFetcher();

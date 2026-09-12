@@ -17,6 +17,8 @@ export const testSkip = ref<boolean | null>(null);
 export const testBusy = ref(false);
 export const testError = ref<string | null>(null);
 export const testPanelOpen = ref(false);
+/** Process Output.Reasoning from the last Test run; null hides the sidebar panel. */
+export const testReasoning = ref<string | null>(null);
 
 /**
  * Last successful test page — kept after closing the diff panel so NodeViewer

@@ -3,6 +3,7 @@ import {
   serializeDocument,
   type GraphDocument,
 } from "@nodish/core";
+import { importProcessGraph } from "../nodish/createAppNodeMap";
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import {
   openPillbugDB,
@@ -73,7 +74,7 @@ export async function loadProject(name: string): Promise<string[]> {
   }
 
   const errors = [
-    ...importGraph(map.value, record.process),
+    ...importProcessGraph(map.value, record.process),
     ...importGraph(skipMap.value, record.skip),
     ...validateProjectExtensions(record.process, map.value.extensions),
     ...validateProjectExtensions(record.skip, skipMap.value.extensions),

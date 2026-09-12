@@ -3,6 +3,7 @@ import {
   replaceDeprecatedParametersInContentAsync,
 } from "../deprecatedParams.ts";
 import {
+  isAbortError,
   setPageContentsFetcher,
   setPageContentsFetcherAsync,
   type PageContentsResult,
@@ -144,6 +145,7 @@ function fetchPageContentsSync(title: string): PageContentsResult {
 /** Async fetch — default for RDP userscripts. */
 async function fetchPageContentsViaFetch(
   title: string,
+  signal?: AbortSignal,
 ): Promise<PageContentsResult> {
   const trimmed = title.trim();
   if (!trimmed) {
@@ -153,8 +155,9 @@ async function fetchPageContentsViaFetch(
   const url = buildApiUrl(trimmed);
   let res: Response;
   try {
-    res = await fetch(url, { credentials: "same-origin" });
+    res = await fetch(url, { credentials: "same-origin", signal });
   } catch (err) {
+    if (isAbortError(err)) throw err;
     throw new Error(
       err instanceof Error
         ? `Failed to fetch page: ${err.message}`

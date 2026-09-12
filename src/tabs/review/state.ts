@@ -1,4 +1,5 @@
 import { computed, ref, watch } from "vue";
+import { isAbortError } from "@nodish/core";
 import {
   hasBotGroup,
   loggedIn,
@@ -25,6 +26,8 @@ interface ReviewLogEntry {
   /** Live queue item currently open for review (not yet saved/skipped). */
   reviewing?: boolean;
   timestamp: number;
+  /** Process Output.Reasoning when it was a string; null hides the sidebar panel. */
+  reasoning: string | null;
 }
 import moorea from "./moorea.json";
 import nordmann from "./nordmann.json";
@@ -138,11 +141,20 @@ const selectedEntry = computed(() =>
   reviewLogs.value.find((entry) => entry.id === selectedLogId.value),
 );
 
+export const currentReasoning = computed(() => {
+  if (selectedLogId.value !== null) {
+    return selectedEntry.value?.reasoning ?? null;
+  }
+  const live = reviewLogs.value.find((entry) => entry.reviewing);
+  return live?.reasoning ?? null;
+});
+
 /** Live queue review saved while browsing a log entry. */
 let liveReview: {
   page: string;
   before: string;
   after: string;
+  reasoning: string | null;
 } | null = null;
 
 export const primaryAction = computed<"save" | "undo">(() => {
@@ -210,7 +222,12 @@ function removeReviewingLogEntries(): void {
 }
 
 /** Keep a REVIEWING row at the top of the log for the live queue item. */
-function syncReviewingLog(page: string, before: string, after: string): void {
+function syncReviewingLog(
+  page: string,
+  before: string,
+  after: string,
+  reasoning: string | null,
+): void {
   const existing = reviewLogs.value.find(
     (entry) => entry.id === REVIEWING_LOG_ID || entry.reviewing,
   );
@@ -223,6 +240,7 @@ function syncReviewingLog(page: string, before: string, after: string): void {
     existing.skipped = false;
     existing.undone = false;
     existing.reviewing = true;
+    existing.reasoning = reasoning;
     existing.timestamp = Date.now();
     if (reviewLogs.value[0]?.id !== existing.id) {
       reviewLogs.value = [
@@ -242,6 +260,7 @@ function syncReviewingLog(page: string, before: string, after: string): void {
       skipped: false,
       undone: false,
       reviewing: true,
+      reasoning,
       timestamp: Date.now(),
     },
     ...reviewLogs.value,
@@ -281,13 +300,19 @@ function markApplied(page: string): void {
     skipped: false,
     undone: false,
     reviewing: false,
+    reasoning: currentReasoning.value,
     timestamp: now,
   };
   reviewLogs.value.unshift(entry);
   selectedLogId.value = entry.id;
 }
 
-function setCurrentReview(page: string, before: string, after: string): void {
+function setCurrentReview(
+  page: string,
+  before: string,
+  after: string,
+  reasoning: string | null = null,
+): void {
   currentPage.value = page;
   currentBefore.value = before;
   currentAfter.value = after;
@@ -296,7 +321,7 @@ function setCurrentReview(page: string, before: string, after: string): void {
   clearManualEditState();
   clearPreviewState();
   saveError.value = null;
-  syncReviewingLog(page, before, after);
+  syncReviewingLog(page, before, after, reasoning);
   maybeAutoSave();
 }
 
@@ -309,7 +334,12 @@ export function clearLogSelection(): void {
     currentPage.value = liveReview.page;
     currentBefore.value = liveReview.before;
     currentAfter.value = liveReview.after;
-    syncReviewingLog(liveReview.page, liveReview.before, liveReview.after);
+    syncReviewingLog(
+      liveReview.page,
+      liveReview.before,
+      liveReview.after,
+      liveReview.reasoning,
+    );
     return;
   }
   // No stashed live review (e.g. opened a log after the queue was empty).
@@ -339,12 +369,14 @@ export function selectLogEntry(id: string): void {
       page: currentPage.value,
       before: currentBefore.value,
       after: currentAfter.value,
+      reasoning: currentReasoning.value,
     };
     const reviewing = reviewLogs.value.find((row) => row.reviewing);
     if (reviewing) {
       reviewing.before = currentBefore.value;
       reviewing.after = currentAfter.value;
       reviewing.page = currentPage.value;
+      reviewing.reasoning = currentReasoning.value;
     }
   }
 
@@ -433,9 +465,10 @@ export async function undoCurrent(): Promise<void> {
 }
 
 function appendLogEntry(
-  entry: Omit<ReviewLogEntry, "id" | "timestamp"> & {
+  entry: Omit<ReviewLogEntry, "id" | "timestamp" | "reasoning"> & {
     id?: string;
     timestamp?: number;
+    reasoning?: string | null;
   },
 ): ReviewLogEntry {
   const row: ReviewLogEntry = {
@@ -447,6 +480,7 @@ function appendLogEntry(
     skipped: entry.skipped,
     undone: entry.undone,
     reviewing: entry.reviewing ?? false,
+    reasoning: entry.reasoning ?? null,
     timestamp: entry.timestamp ?? Date.now(),
   };
   // Keep a live REVIEWING row above completed outcomes when present.
@@ -513,6 +547,7 @@ export function skipCurrent(): void {
       skipped: true,
       undone: false,
       reviewing: false,
+      reasoning: currentReasoning.value,
       timestamp: now,
     };
     reviewLogs.value.unshift(entry);
@@ -564,7 +599,12 @@ async function processNextInQueue(signal?: AbortSignal): Promise<void> {
 
       // Needs human review — pause until Save/Skip/Stop
       // Keep raw head in queue until Save/Skip so prefetch can see slice(1…).
-      setCurrentReview(outcome.prefixed, outcome.before, outcome.after);
+      setCurrentReview(
+        outcome.prefixed,
+        outcome.before,
+        outcome.after,
+        outcome.reasoning,
+      );
       // Align queue head key with prefixed form for later dequeue.
       if (pageQueue.value[0] !== outcome.prefixed) {
         pageQueue.value = [
@@ -582,7 +622,7 @@ async function processNextInQueue(signal?: AbortSignal): Promise<void> {
       ensurePrefetch();
       return;
     } catch (error) {
-      if (activeSignal?.aborted) break;
+      if (activeSignal?.aborted || isAbortError(error)) break;
       batchError.value =
         `${rawHead}: ` +
         (error instanceof Error ? error.message : String(error));
@@ -631,7 +671,12 @@ type ReviewTourSnapshot = {
   currentBefore: string;
   currentAfter: string;
   selectedLogId: string | null;
-  liveReview: { page: string; before: string; after: string } | null;
+  liveReview: {
+    page: string;
+    before: string;
+    after: string;
+    reasoning: string | null;
+  } | null;
   reviewLogs: ReviewLogEntry[];
   manualEditing: boolean;
   preManualAfter: string | null;
@@ -687,6 +732,7 @@ export function beginReviewTourDemo(): void {
       applied: true,
       skipped: false,
       undone: false,
+      reasoning: null,
       timestamp: now,
     },
     {
@@ -697,6 +743,7 @@ export function beginReviewTourDemo(): void {
       applied: false,
       skipped: true,
       undone: false,
+      reasoning: null,
       timestamp: now - 60_000,
     },
     ...withoutTour.map(cloneLogEntry),

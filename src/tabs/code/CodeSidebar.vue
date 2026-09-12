@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { isAbortError } from "@nodish/core";
 import { getPage, loggedIn } from "../../wiki/session";
 import { runGraphsForPage } from "../../wiki/runPage";
 import {
@@ -11,29 +12,47 @@ import {
   testError,
   testPageTitle,
   testPanelOpen,
+  testReasoning,
   testSkip,
   type CodeGraphKind,
 } from "./state";
+
+let testGeneration = 0;
+let testAbort: AbortController | null = null;
 
 async function runTest(): Promise<void> {
   const title = testPageTitle.value.trim();
   if (!title || !loggedIn.value) return;
 
+  const gen = ++testGeneration;
+  testAbort?.abort();
+  const ac = new AbortController();
+  testAbort = ac;
+
   testBusy.value = true;
   testError.value = null;
   testSkip.value = null;
+  testReasoning.value = null;
   testPanelOpen.value = true;
 
   try {
     const { titleObj, content, prefixed } = await getPage(title);
+    if (gen !== testGeneration) return;
     // Keep for NodeViewer live eval even if graphs error / panel is closed later.
     setPreviewFromTest(titleObj, content);
-    const outcome = runGraphsForPage(titleObj, content, prefixed);
+    const outcome = await runGraphsForPage(
+      titleObj,
+      content,
+      prefixed,
+      ac.signal,
+    );
+    if (gen !== testGeneration) return;
 
     if (outcome.kind === "error") {
       testBefore.value = content;
       testAfter.value = content;
       testError.value = outcome.message;
+      testReasoning.value = null;
       return;
     }
 
@@ -41,20 +60,27 @@ async function runTest(): Promise<void> {
     if (outcome.kind === "skip") {
       testSkip.value = true;
       testAfter.value = outcome.before;
+      testReasoning.value = null;
     } else if (outcome.kind === "noop") {
       testSkip.value = false;
       testAfter.value = outcome.before;
+      testReasoning.value = null;
     } else {
       testSkip.value = false;
       testAfter.value = outcome.after;
+      testReasoning.value = outcome.reasoning;
     }
     testPageTitle.value = prefixed;
   } catch (err) {
+    if (gen !== testGeneration || isAbortError(err)) return;
     testError.value = err instanceof Error ? err.message : String(err);
     testBefore.value = "";
     testAfter.value = "";
+    testReasoning.value = null;
   } finally {
-    testBusy.value = false;
+    if (gen === testGeneration) {
+      testBusy.value = false;
+    }
   }
 }
 
@@ -64,6 +90,7 @@ function clearTest(): void {
   testAfter.value = "";
   testSkip.value = null;
   testError.value = null;
+  testReasoning.value = null;
 }
 
 function setGraph(kind: CodeGraphKind): void {
@@ -131,6 +158,14 @@ function setGraph(kind: CodeGraphKind): void {
     </div>
 
     <p v-if="!loggedIn" class="panel-muted">Log in to fetch a test page</p>
+
+    <div class="reasoning-region"></div>
+    <div
+      v-if="testReasoning != null"
+      class="reasoning-panel"
+    >
+      {{ testReasoning }}
+    </div>
   </div>
 </template>
 
@@ -164,5 +199,24 @@ function setGraph(kind: CodeGraphKind): void {
 .live-eval-toggle input {
   margin: 0;
   accent-color: var(--accent);
+}
+
+.reasoning-region {
+  flex: 1;
+  min-height: 0;
+}
+
+.reasoning-panel {
+  flex: 0 1 auto;
+  max-height: min(12em, 30%);
+  overflow-y: auto;
+  white-space: pre-wrap;
+  padding: 6px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--panel-muted);
+  font-size: 12px;
+  line-height: 1.4;
 }
 </style>

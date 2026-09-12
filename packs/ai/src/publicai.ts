@@ -1,8 +1,8 @@
+import { isAbortError } from "@nodish/core";
 import { matchOption, normalizeNewlines } from "./newlines";
 
 /**
- * Sync Public AI chat completions via same-origin `/publicai/*` proxy.
- * Graph execute is sync-only, so this uses blocking XHR (blocks the UI).
+ * Public AI chat completions via same-origin `/publicai/*` proxy.
  */
 
 export type ChatMessage = {
@@ -14,26 +14,30 @@ export type ChatCompletionResult = {
   content: string;
 };
 
-export function publicAiChatCompletionsSync(options: {
+export async function publicAiChatCompletions(options: {
   apiKey: string;
   model: string;
   messages: ChatMessage[];
-}): ChatCompletionResult {
-  const xhr = new XMLHttpRequest();
-  xhr.open("POST", "/publicai/chat/completions", false);
-  xhr.setRequestHeader("Content-Type", "application/json");
-  xhr.setRequestHeader("Authorization", `Bearer ${options.apiKey}`);
-  // Browsers forbid setting User-Agent on XHR; the proxy forwards the browser UA
-  // and injects pillbug-ai if needed.
-
+  signal?: AbortSignal;
+}): Promise<ChatCompletionResult> {
   const body = JSON.stringify({
     model: options.model,
     messages: options.messages,
   });
 
+  let res: Response;
   try {
-    xhr.send(body);
+    res = await fetch("/publicai/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${options.apiKey}`,
+      },
+      body,
+      signal: options.signal,
+    });
   } catch (err) {
+    if (isAbortError(err)) throw err;
     throw new Error(
       err instanceof Error
         ? `Public AI request failed: ${err.message}`
@@ -41,16 +45,16 @@ export function publicAiChatCompletionsSync(options: {
     );
   }
 
-  if (xhr.status < 200 || xhr.status >= 300) {
-    const detail = xhr.responseText?.slice(0, 400) || "";
+  if (res.status < 200 || res.status >= 300) {
+    const detail = (await res.text()).slice(0, 400);
     throw new Error(
-      `Public AI HTTP ${xhr.status}${detail ? `: ${detail}` : ""}`,
+      `Public AI HTTP ${res.status}${detail ? `: ${detail}` : ""}`,
     );
   }
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(xhr.responseText) as unknown;
+    parsed = (await res.json()) as unknown;
   } catch {
     throw new Error("Public AI returned invalid JSON");
   }

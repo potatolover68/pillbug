@@ -49,8 +49,8 @@ import {
   templatesFromContent,
   type Template,
 } from "./wikitext.ts";
-import { replaceDeprecatedParametersInContent } from "./deprecatedParams.ts";
-import { fetchPageContents } from "./pageContents.ts";
+import { replaceDeprecatedParametersInContentAsync } from "./deprecatedParams.ts";
+import { fetchPageContentsAsync } from "./pageContents.ts";
 import { applyAwbTypos } from "./typos.ts";
 
 const MW_COLOR = "#3d8bfd";
@@ -1094,6 +1094,7 @@ const replaceDeprecatedParameters: NodeSpec = {
   color: MW_COLOR,
   group: GROUP_ON_PAGE,
   keywords: ["rdp", "deprecated", "infobox"],
+  io: true,
   inputs: {
     title: templateNamePort,
     content: wikitextPort,
@@ -1109,11 +1110,12 @@ const replaceDeprecatedParameters: NodeSpec = {
   outputs: {
     contentAfter: updatedWikitextPort,
   },
-  execute: (inputs) => ({
-    contentAfter: replaceDeprecatedParametersInContent(
+  execute: async (inputs, ctx) => ({
+    contentAfter: await replaceDeprecatedParametersInContentAsync(
       inputs.title,
       requireContent(inputs.content),
       inputs.fixindent === true,
+      ctx.signal,
     ),
   }),
 };
@@ -1273,10 +1275,11 @@ const getPageContents: NodeSpec = {
   typeId: "wiki/get-page-contents",
   displayName: "Get page contents",
   description:
-    "Fetch wikitext for a title. Missing pages yield empty wikitext and exists=false. Uses a blocking wiki read.",
+    "Fetch wikitext for a title. Missing pages yield empty wikitext and exists=false.",
   color: MW_COLOR,
   group: GROUP_PAGE,
   keywords: ["fetch", "read", "load page"],
+  io: true,
   inputs: {
     title: titleOrString,
   },
@@ -1288,7 +1291,7 @@ const getPageContents: NodeSpec = {
       description: "False if the page is missing or the title is empty.",
     },
   },
-  execute: (inputs) => {
+  execute: async (inputs, ctx) => {
     const raw = asString(inputs.title).trim();
     if (!raw) {
       return { content: "", exists: false };
@@ -1299,7 +1302,7 @@ const getPageContents: NodeSpec = {
     } catch {
       // Siteinfo may be unloaded; fall back to the raw string.
     }
-    const result = fetchPageContents(titleText);
+    const result = await fetchPageContentsAsync(titleText, ctx.signal);
     return { content: result.content, exists: result.exists };
   },
 };

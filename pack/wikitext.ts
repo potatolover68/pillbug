@@ -103,6 +103,25 @@ export function chunksToString(chunks: WikitextChunk[]): string {
   return out;
 }
 
+/**
+ * `{{DEFAULTSORT:key}}`, `{{DISPLAYTITLE:title|noerror}}`, etc. — not templates.
+ * True when the name has a colon and the part before it is A–Z / underscore only.
+ */
+export function isColonMagicWordName(name: string): boolean {
+  const colon = name.indexOf(":");
+  if (colon < 1) return false;
+  return /^[A-Z][A-Z_]*$/.test(name.slice(0, colon).trim());
+}
+
+/** `{{#invoke:…}}`, `{{#if:…}}`, … — parser functions, not templates. */
+export function isParserFunctionName(name: string): boolean {
+  return name.trim().startsWith("#");
+}
+
+function isPageForestTemplateName(name: string): boolean {
+  return !isColonMagicWordName(name) && !isParserFunctionName(name);
+}
+
 export function parseValueChunks(
   value: string,
   baseOffset = 0,
@@ -140,7 +159,7 @@ export function parseValueChunks(
         const inner = raw.slice(2, -2);
         const nameMatch = /^([^|{}\n]+)/.exec(inner);
         const name = (nameMatch?.[1] ?? "").trim();
-        if (name) {
+        if (name && isPageForestTemplateName(name)) {
           chunks.push({
             kind: "template",
             template: hitToTemplate({
@@ -490,6 +509,36 @@ export function mapTemplateTree(
   return fn(base);
 }
 
+/** Bottom-up async map; children are awaited in document order. */
+export async function mapTemplateTreeAsync(
+  t: Template,
+  fn: (t: Template) => Template | Promise<Template>,
+): Promise<Template> {
+  let anyChildChanged = false;
+  const params: TemplateParam[] = [];
+  for (const p of t.params) {
+    let valueChanged = false;
+    const value: WikitextChunk[] = [];
+    for (const c of p.value) {
+      if (c.kind === "text") {
+        value.push(c);
+        continue;
+      }
+      const next = await mapTemplateTreeAsync(c.template, fn);
+      if (next !== c.template) {
+        valueChanged = true;
+        anyChildChanged = true;
+        value.push({ kind: "template", template: next });
+      } else {
+        value.push(c);
+      }
+    }
+    params.push(valueChanged ? { ...p, value } : p);
+  }
+  const base = anyChildChanged ? { ...t, params, pristine: false } : t;
+  return fn(base);
+}
+
 /** Map every node in the forest (deep). */
 export function mapAllTemplates(
   roots: Template[],
@@ -518,7 +567,7 @@ export function collectTemplateNames(roots: Template[]): string[] {
   const names = new Set<string>();
   walkTemplates(roots, (t) => {
     const n = t.name.trim();
-    if (!n || n.startsWith("#")) return;
+    if (!n || n.startsWith("#") || isColonMagicWordName(n)) return;
     names.add(templateName(n));
   });
   return [...names];
@@ -548,6 +597,25 @@ export function mapTemplatesInContent(
 ): string {
   const roots = templatesFromContent(content);
   const mapped = mapTemplatesByName(roots, names, fn);
+  return applyTemplatesToContent(content, mapped);
+}
+
+/** Async deep-map of matching templates; roots are processed in order. */
+export async function mapTemplatesInContentAsync(
+  content: string,
+  names: string | string[],
+  fn: (t: Template) => Template | Promise<Template>,
+): Promise<string> {
+  const list = Array.isArray(names) ? names : [names];
+  const roots = templatesFromContent(content);
+  const mapped: Template[] = [];
+  for (const r of roots) {
+    mapped.push(
+      await mapTemplateTreeAsync(r, (t) =>
+        list.some((n) => templateNamesMatch(t.name, n)) ? fn(t) : t,
+      ),
+    );
+  }
   return applyTemplatesToContent(content, mapped);
 }
 
@@ -856,14 +924,20 @@ export function findAllTemplates(content: string): TemplateHit[] {
 /**
  * Flat scanner for every `{{...}}` including nested (used when content is
  * masked / not a clean tree parse). Prefer findAllTemplates on normal wikitext.
+ *
+ * `{{{arg|}}}` is tracked separately so its `}}}` does not close an outer
+ * `{{#invoke:…}}` (Infobox person puts `{{{template_name|}}}` inside the
+ * unknown-parameters invoke).
  */
 export function scanAllTemplateHits(content: string): TemplateHit[] {
   const hits: TemplateHit[] = [];
   const stack: number[] = [];
+  let argDepth = 0;
   let i = 0;
   while (i < content.length - 1) {
     if (content[i] === "{" && content[i + 1] === "{") {
       if (content[i + 2] === "{") {
+        argDepth += 1;
         i += 3;
         continue;
       }
@@ -871,18 +945,25 @@ export function scanAllTemplateHits(content: string): TemplateHit[] {
       i += 2;
       continue;
     }
-    if (content[i] === "}" && content[i + 1] === "}" && stack.length > 0) {
-      const start = stack.pop()!;
-      const end = i + 2;
-      const raw = content.slice(start, end);
-      const inner = raw.slice(2, -2);
-      const nameMatch = /^([^|{}\n]+)/.exec(inner);
-      const name = (nameMatch?.[1] ?? "").trim();
-      if (name) {
-        hits.push({ raw, start, end, name, inner });
+    if (content[i] === "}" && content[i + 1] === "}") {
+      if (content[i + 2] === "}" && argDepth > 0) {
+        argDepth -= 1;
+        i += 3;
+        continue;
       }
-      i += 2;
-      continue;
+      if (stack.length > 0) {
+        const start = stack.pop()!;
+        const end = i + 2;
+        const raw = content.slice(start, end);
+        const inner = raw.slice(2, -2);
+        const nameMatch = /^([^|{}\n]+)/.exec(inner);
+        const name = (nameMatch?.[1] ?? "").trim();
+        if (name && !isColonMagicWordName(name)) {
+          hits.push({ raw, start, end, name, inner });
+        }
+        i += 2;
+        continue;
+      }
     }
     i += 1;
   }

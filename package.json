@@ -1,7 +1,7 @@
 {
   "name": "pillbug",
   "private": true,
-  "version": "1.0.0-rc7",
+  "version": "1.0.0-rc8",
   "type": "module",
   "license": "GPL-3.0-or-later",
   "scripts": {
@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@nodish/base": "^0.4.0",
-    "@nodish/core": "^0.6.0",
+    "@nodish/core": "^0.7.1",
     "@vueuse/core": "^14.3.0",
     "diff-match-patch": "^1.0.5",
     "dotenv": "^17.4.2",

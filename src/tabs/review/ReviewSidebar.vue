@@ -9,6 +9,7 @@ import {
   canPreview,
   canPrimaryAction,
   canSkip,
+  currentReasoning,
   editSummary,
   markMinor,
   logStatus,
@@ -187,6 +188,13 @@ async function onBatchToggle(): Promise<void> {
       </ul>
       <p v-else class="empty">No edits yet</p>
     </div>
+    <div
+      v-if="currentReasoning != null"
+      class="reasoning-panel"
+      data-tour="review-reasoning"
+    >
+      {{ currentReasoning }}
+    </div>
   </div>
 </template>
 
@@ -328,5 +336,19 @@ async function onBatchToggle(): Promise<void> {
 .empty {
   margin: 0;
   color: var(--panel-muted);
+}
+
+.reasoning-panel {
+  flex: 0 1 auto;
+  max-height: min(12em, 30%);
+  overflow-y: auto;
+  white-space: pre-wrap;
+  padding: 6px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--panel-muted);
+  font-size: 12px;
+  line-height: 1.4;
 }
 </style>
